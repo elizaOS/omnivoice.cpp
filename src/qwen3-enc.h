@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #define QWEN3_MAX_LAYERS 32
 
@@ -228,18 +229,32 @@ static struct ggml_tensor * qwen3_build_layer(struct ggml_context * ctx,
 }
 
 // Full N-layer stack: input [H, S] -> output [H, S] (post final-norm)
-static struct ggml_tensor * qwen3_build_layers(struct ggml_context * ctx,
-                                               const Qwen3Config &   c,
-                                               Qwen3Layer *          layers,
-                                               struct ggml_tensor *  final_norm_w,
-                                               struct ggml_tensor *  hidden,
-                                               struct ggml_tensor *  positions,
-                                               struct ggml_tensor *  mask,
-                                               int                   S,
-                                               bool                  use_flash_attn = true,
-                                               bool                  clamp_fp16     = false) {
+// intermediates: optional out-param. When non-null, the hidden tensor right
+// after each layer index listed in intermediate_indices is appended (in the
+// same order as those indices). Caller must ggml_set_output on them before
+// the graph build.
+static struct ggml_tensor * qwen3_build_layers(struct ggml_context *               ctx,
+                                               const Qwen3Config &                 c,
+                                               Qwen3Layer *                        layers,
+                                               struct ggml_tensor *                final_norm_w,
+                                               struct ggml_tensor *                hidden,
+                                               struct ggml_tensor *                positions,
+                                               struct ggml_tensor *                mask,
+                                               int                                 S,
+                                               bool                                use_flash_attn       = true,
+                                               bool                                clamp_fp16           = false,
+                                               const std::vector<int> *            intermediate_indices = nullptr,
+                                               std::vector<struct ggml_tensor *> * intermediates        = nullptr) {
     for (int i = 0; i < c.n_layers; i++) {
         hidden = qwen3_build_layer(ctx, c, &layers[i], hidden, positions, mask, S, use_flash_attn, clamp_fp16);
+        if (intermediate_indices && intermediates) {
+            for (int idx : *intermediate_indices) {
+                if (idx == i) {
+                    intermediates->push_back(hidden);
+                    break;
+                }
+            }
+        }
     }
     return qwen3_rms_norm(ctx, hidden, final_norm_w, c.rms_norm_eps);
 }

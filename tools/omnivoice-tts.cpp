@@ -51,6 +51,8 @@ static void print_usage(const char * prog) {
             "  --dump <dir>            Dump intermediate tensors (f32) to <dir>\n"
             "  --sm-count <int>        CUDA SM count of the reference device (philox alignment)\n"
             "  --sm-threads <int>      CUDA max threads per SM of the reference device\n"
+            "  --pos-temp <float>      Override MaskGIT position_temperature (default 5.0)\n"
+            "  --cls-temp <float>      Override MaskGIT class_temperature (default 0.0)\n"
             "  --llm-test <input.bin>  Full LLM forward, dump audio_logits\n"
             "  --maskgit-test          Greedy MaskGIT decoder, dump audio_tokens [K, T]\n"
             "                          (no codec decode, reads target text from stdin)\n",
@@ -218,6 +220,8 @@ int main(int argc, char ** argv) {
     const char * dump_dir               = NULL;
     int          sm_count               = 0;
     int          max_threads_per_sm     = 0;
+    float        cli_pos_temp           = -1.0f;
+    float        cli_cls_temp           = -1.0f;
     WavFormat    wav_fmt                = WAV_S16;
 
     for (int i = 1; i < argc; i++) {
@@ -253,6 +257,10 @@ int main(int argc, char ** argv) {
             sm_count = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--sm-threads") == 0 && i + 1 < argc) {
             max_threads_per_sm = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--pos-temp") == 0 && i + 1 < argc) {
+            cli_pos_temp = (float) atof(argv[++i]);
+        } else if (strcmp(argv[i], "--cls-temp") == 0 && i + 1 < argc) {
+            cli_cls_temp = (float) atof(argv[++i]);
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_path = argv[++i];
         } else if (strcmp(argv[i], "--format") == 0 && i + 1 < argc) {
@@ -305,7 +313,7 @@ int main(int argc, char ** argv) {
     // any other value is used verbatim for reproducible runs across the maskgit
     // RNG.
     uint64_t seed_resolved = (seed_arg < 0) ? (uint64_t) std::random_device{}() : (uint64_t) seed_arg;
-    fprintf(stderr, "[CLI] seed = %llu%s\n", (unsigned long long) seed_resolved, (seed_arg < 0) ? " (random)" : "");
+    fprintf(stderr, "[CLI] Seed: %llu%s\n", (unsigned long long) seed_resolved, (seed_arg < 0) ? " (random)" : "");
 
     BackendPair bp = backend_init("LM");
 
@@ -449,11 +457,19 @@ int main(int argc, char ** argv) {
                 // Defaults mirror OmniVoiceGenerationConfig (Python) :
                 // num_step=32, guidance_scale=2.0, t_shift=0.1,
                 // layer_penalty_factor=5.0, position_temperature=5.0,
-                // class_temperature=0.0. Only the seed is plumbed from the CLI.
+                // class_temperature=0.0. The seed is plumbed from the CLI,
+                // and pos_temp / cls_temp can override the sampling defaults
+                // for bit comparison with a controlled Python reference.
                 MaskgitConfig mg_cfg      = {};
                 mg_cfg.seed               = seed_resolved;
                 mg_cfg.sm_count           = sm_count;
                 mg_cfg.max_threads_per_sm = max_threads_per_sm;
+                if (cli_pos_temp >= 0.0f) {
+                    mg_cfg.position_temperature = cli_pos_temp;
+                }
+                if (cli_cls_temp >= 0.0f) {
+                    mg_cfg.class_temperature = cli_cls_temp;
+                }
 
                 std::string text         = read_stdin_text();
                 std::string lang         = prompt_lang ? prompt_lang : "";

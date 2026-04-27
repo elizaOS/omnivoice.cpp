@@ -46,11 +46,11 @@ static void debug_dump(const DebugDumper * d, const char * name, const float * d
     fclose(f);
 
     // First 4 values for quick sanity check on stderr.
-    fprintf(stderr, "[Debug] %s : [", name);
+    fprintf(stderr, "[Debug] %s: [", name);
     for (int i = 0; i < ndims; i++) {
         fprintf(stderr, "%s%d", i ? ", " : "", shape[i]);
     }
-    fprintf(stderr, "] first4 :");
+    fprintf(stderr, "] first4:");
     for (int i = 0; i < 4 && i < numel; i++) {
         fprintf(stderr, " %.6f", data[i]);
     }

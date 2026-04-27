@@ -61,7 +61,9 @@ std::vector<float> pipeline_tts_llm_forward(PipelineTTS *   pt,
                                             const int32_t * audio_mask,
                                             const int32_t * attention_mask,
                                             int             K,
-                                            int             S);
+                                            int             S,
+                                            const char *    dump_hidden_dir  = nullptr,
+                                            const char *    dump_hidden_name = nullptr);
 
 // Batched version : runs B' independent forwards (cond + uncond stacked).
 // input_ids   [B', K, S]      row-major (b slow, k mid, s fast)
@@ -75,7 +77,8 @@ std::vector<float> pipeline_tts_llm_forward_batched(PipelineTTS *   pt,
                                                     const int32_t * attention_mask,
                                                     int             B_prime,
                                                     int             K,
-                                                    int             S);
+                                                    int             S,
+                                                    const char *    dump_hidden_dir = nullptr);
 
 // Public TTS entry : tokenize text, build prompt + CFG batch, run the MaskGIT
 // iterative decoder. Returns flat audio_tokens of size K * T (k slow, t fast)

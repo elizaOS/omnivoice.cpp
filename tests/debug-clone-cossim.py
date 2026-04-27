@@ -70,6 +70,26 @@ def cos(a, b):
     return float(np.dot(a, b) / d) if d > 1e-10 else 0.0
 
 def install_hooks(model, dump_dir):
+    def passthrough_post(generated_audio, postprocess_output, ref_rms):
+        return generated_audio
+    model._post_process_audio = passthrough_post
+
+    seen = {"step0": False}
+    orig_pred = model._predict_tokens_with_scoring
+    def hooked_pred(c_logits, u_logits, gen_config):
+        if not seen["step0"]:
+            c = c_logits.detach().to(torch.float32).cpu().numpy()
+            u = u_logits.detach().to(torch.float32).cpu().numpy()
+            if c.ndim == 4:
+                c = c[0]
+            if u.ndim == 4:
+                u = u[0]
+            save_dump(os.path.join(dump_dir, "lm-logits-step0-cond.bin"),   c)
+            save_dump(os.path.join(dump_dir, "lm-logits-step0-uncond.bin"), u)
+            seen["step0"] = True
+        return orig_pred(c_logits, u_logits, gen_config)
+    model._predict_tokens_with_scoring = hooked_pred
+
     orig_generate = model._generate_iterative
     def hooked_generate(task, gen_config):
         out = orig_generate(task, gen_config)
@@ -113,15 +133,15 @@ def main():
         text = f.read().strip()
     with open(args.ref_text, "r", encoding="utf-8") as f:
         ref_text = f.read().strip()
-    print(f"[in] prompt   : {len(text)} chars : {text[:60]}{'...' if len(text) > 60 else ''}")
-    print(f"[in] ref_text : {len(ref_text)} chars : {ref_text[:60]}{'...' if len(ref_text) > 60 else ''}")
-    print(f"[in] ref_wav  : {args.ref_audio}")
-    print(f"[in] language : {args.lang}")
-    print(f"[in] seed     : {args.seed}")
+    print(f"[Input] Prompt: {len(text)} chars: {text[:60]}{'...' if len(text) > 60 else ''}")
+    print(f"[Input] RefText: {len(ref_text)} chars: {ref_text[:60]}{'...' if len(ref_text) > 60 else ''}")
+    print(f"[Input] RefWav: {args.ref_audio}")
+    print(f"[Input] Language: {args.lang}")
+    print(f"[Input] Seed: {args.seed}")
 
     fix_random_seed(args.seed)
     sm, mt = cuda_props()
-    print(f"[cuda] sm_count={sm}  max_threads_per_sm={mt}")
+    print(f"[Cuda] sm_count: {sm} max_threads_per_sm: {mt}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model  = OmniVoice.from_pretrained(
         CKPT,
@@ -142,7 +162,7 @@ def main():
     )
     audio_pt = np.asarray(audios[0], dtype=np.float32)
     sf.write(args.out_pt, audio_pt, 24000, subtype="FLOAT")
-    print(f"[pt]  audio   : {audio_pt.shape[0]} samples ({audio_pt.shape[0] / 24000:.2f} s) -> {args.out_pt}")
+    print(f"[Python] Audio: {audio_pt.shape[0]} samples {audio_pt.shape[0] / 24000:.2f}s -> {args.out_pt}")
 
     del model
     torch.cuda.empty_cache()
@@ -163,7 +183,7 @@ def main():
     ]
     if args.duration:
         cmd += ["--duration", str(args.duration)]
-    print(f"[cpp] {' '.join(cmd)}")
+    print(f"[GGML] Cmd: {' '.join(cmd)}")
     r = subprocess.run(cmd, input=text, text=True)
     if r.returncode != 0:
         sys.exit(r.returncode)
@@ -171,29 +191,30 @@ def main():
     if audio_cpp.ndim > 1:
         audio_cpp = audio_cpp[:, 0]
     audio_cpp = audio_cpp.astype(np.float32)
-    print(f"[cpp] audio   : {audio_cpp.shape[0]} samples @ {sr} Hz ({audio_cpp.shape[0] / sr:.2f} s) -> {args.out_cpp}")
+    print(f"[GGML] Audio: {audio_cpp.shape[0]} samples {sr} Hz {audio_cpp.shape[0] / sr:.2f}s -> {args.out_cpp}")
 
-    print("\n[cossim] dump pairs")
-    names = sorted(set(os.listdir(DUMP_CPP)) & set(os.listdir(DUMP_PT)))
-    if not names:
-        print("  WARN no overlapping dumps found")
-    for name in names:
-        a, sa = load_dump(os.path.join(DUMP_CPP, name))
-        b, sb = load_dump(os.path.join(DUMP_PT,  name))
-        n = min(a.size, b.size)
-        c = cos(a, b)
-        line = f"  {name:24s} cos={c:.6f}  cpp_shape={sa}  pt_shape={sb}"
-        if name == "mg-tokens.bin":
-            ai = a.astype(np.int64).ravel()[:n]
-            bi = b.astype(np.int64).ravel()[:n]
-            match = float(np.mean(ai == bi))
-            line += f"  exact={100.0 * match:.2f}%"
-        print(line)
+    # Cossim in pipeline order: logits -> tokens -> audio. Cond and uncond
+    # on the same line so a drift localizes to the originating stage.
+    def pair(name):
+        a, _ = load_dump(os.path.join(DUMP_CPP, name))
+        b, _ = load_dump(os.path.join(DUMP_PT,  name))
+        return a, b
+
+    ca, cb = pair("lm-logits-step0-cond.bin")
+    ua, ub = pair("lm-logits-step0-uncond.bin")
+    print(f"[Cossim] Logits cond: {cos(ca, cb):.6f} uncond: {cos(ua, ub):.6f}")
+
+    ta, tb = pair("mg-tokens.bin")
+    n = min(ta.size, tb.size)
+    ai = ta.astype(np.int64).ravel()[:n]
+    bi = tb.astype(np.int64).ravel()[:n]
+    print(f"[Cossim] Tokens: {cos(ta, tb):.6f} exact: {100.0 * float(np.mean(ai == bi)):.2f}%")
+
+    aa, ab = pair("output-audio.bin")
+    print(f"[Cossim] Audio: {cos(aa, ab):.6f}")
 
     n = min(audio_cpp.size, audio_pt.size)
-    print(f"\n[cossim] wav  cpp vs pt : {cos(audio_cpp[:n], audio_pt[:n]):.6f} (over {n} samples)")
-    if audio_cpp.size != audio_pt.size:
-        print(f"[cossim] WARN length mismatch cpp={audio_cpp.size} pt={audio_pt.size}")
+    print(f"[Cossim] WAV: {cos(audio_cpp[:n], audio_pt[:n]):.6f} samples: {n}")
 
 if __name__ == "__main__":
     main()

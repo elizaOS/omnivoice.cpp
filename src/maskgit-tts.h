@@ -8,6 +8,7 @@
 // for bytewise validation against the reference. Higher temperatures rely
 // on a seedable PRNG and stay reproducible per seed.
 
+#include "debug.h"
 #include "philox.h"
 #include "pipeline-tts.h"
 #include "prompt-tts.h"
@@ -134,7 +135,11 @@ static void maskgit_gumbel_inplace(float *    x,
 
 // Run the iterative decoder. Returns flat audio_tokens of size K * T (k slow,
 // t fast). The prompt input_ids buffer is mutated in place during decoding.
-static std::vector<int32_t> maskgit_generate(PipelineTTS * pt, PromptTTS * prompt, const MaskgitConfig & cfg, int T) {
+static std::vector<int32_t> maskgit_generate(PipelineTTS *         pt,
+                                             PromptTTS *           prompt,
+                                             const MaskgitConfig & cfg,
+                                             int                   T,
+                                             const char *          dump_dir = nullptr) {
     const int K       = prompt->K;
     const int B_prime = prompt->B_prime;
     const int S       = prompt->S_max;
@@ -171,8 +176,10 @@ static std::vector<int32_t> maskgit_generate(PipelineTTS * pt, PromptTTS * promp
             continue;
         }
 
-        std::vector<float> logits_full = pipeline_tts_llm_forward_batched(
-            pt, prompt->input_ids.data(), prompt->audio_mask.data(), prompt->attention_mask.data(), B_prime, K, S);
+        const char *       hidden_dump = (step == 0 && dump_dir) ? dump_dir : nullptr;
+        std::vector<float> logits_full =
+            pipeline_tts_llm_forward_batched(pt, prompt->input_ids.data(), prompt->audio_mask.data(),
+                                             prompt->attention_mask.data(), B_prime, K, S, hidden_dump);
         if (logits_full.size() != (size_t) B_prime * per_item) {
             fprintf(stderr, "[MaskGIT] FATAL: forward returned %zu f32 (expected %zu)\n", logits_full.size(),
                     (size_t) B_prime * per_item);
@@ -194,6 +201,16 @@ static std::vector<int32_t> maskgit_generate(PipelineTTS * pt, PromptTTS * promp
                 std::copy(src_cond + cond_off, src_cond + cond_off + V, c_log.begin() + dst_off);
                 std::copy(src_uncond + uncond_off, src_uncond + uncond_off + V, u_log.begin() + dst_off);
             }
+        }
+
+        // Dump LM logits at step 0 only, layout [K, T, V] for both cond and
+        // uncond rows. The Python side mirrors this layout via a hook on
+        // _predict_tokens_with_scoring.
+        if (step == 0 && dump_dir) {
+            DebugDumper dbg;
+            debug_init(&dbg, dump_dir);
+            debug_dump_3d(&dbg, "lm-logits-step0-cond", c_log.data(), K, T, V);
+            debug_dump_3d(&dbg, "lm-logits-step0-uncond", u_log.data(), K, T, V);
         }
 
         // CFG + log_softmax pipeline. Result shape [K, T, V].

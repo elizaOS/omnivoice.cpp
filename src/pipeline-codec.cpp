@@ -286,7 +286,7 @@ std::vector<float> pipeline_codec_decode(PipelineCodec * pc, const int32_t * cod
             FILE * f = fopen(path, "wb");
             fwrite(tmp.data(), sizeof(float), n, f);
             fclose(f);
-            fprintf(stderr, "[PipelineCodec] Dumped %s : %zu f32 values, ne=(%lld, %lld, %lld, %lld)\n", path, n,
+            fprintf(stderr, "[PipelineCodec] Dumped %s: %zu f32 values, ne=(%lld, %lld, %lld, %lld)\n", path, n,
                     (long long) t->ne[0], (long long) t->ne[1], (long long) t->ne[2], (long long) t->ne[3]);
         };
         dump_tensor("cpp_rvq_out.raw", latent);
@@ -488,7 +488,7 @@ std::vector<int32_t> pipeline_codec_encode(PipelineCodec * pc, const float * aud
             FILE * f = fopen(path, "wb");
             fwrite(tmp.data(), sizeof(float), n, f);
             fclose(f);
-            fprintf(stderr, "[Encode] Dumped %s : %zu f32 values, ne=(%lld, %lld)\n", path, n, (long long) t->ne[0],
+            fprintf(stderr, "[Encode] Dumped %s: %zu f32 values, ne=(%lld, %lld)\n", path, n, (long long) t->ne[0],
                     (long long) t->ne[1]);
         };
         dump_tensor("cpp_encode_pre_fc.raw", pre_fc);

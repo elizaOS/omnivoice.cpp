@@ -192,7 +192,7 @@ int main(int argc, char ** argv) {
 
     const int mode = infer_mode(input_path);
     if (mode == 0) {
-        fprintf(stderr, "[CLI] ERROR: %s : unsupported extension (expect .wav or .rvq)\n", input_path);
+        fprintf(stderr, "[CLI] ERROR: %s: unsupported extension (expect .wav or .rvq)\n", input_path);
         return 1;
     }
 
@@ -228,7 +228,7 @@ int main(int argc, char ** argv) {
                 const int    K           = pc.rvq.num_codebooks;
                 const int    T           = (int) codes.size() / K;
                 const size_t packed_size = (codes.size() * (size_t) RVQ_CODE_BITS + 7) / 8;
-                fprintf(stderr, "[Codec] Wrote %s : K=%d T=%d (%zu bytes)\n", out_str.c_str(), K, T, packed_size);
+                fprintf(stderr, "[Codec] Wrote %s: K=%d T=%d (%zu bytes)\n", out_str.c_str(), K, T, packed_size);
             }
         }
     } else {
@@ -246,7 +246,7 @@ int main(int argc, char ** argv) {
             } else if (!audio_write_wav(out_str.c_str(), audio.data(), (int) audio.size(), pc.sample_rate, wav_fmt)) {
                 rc = 1;
             } else {
-                fprintf(stderr, "[Codec] Wrote %s : %d samples @ %d Hz, %.2f s\n", out_str.c_str(), (int) audio.size(),
+                fprintf(stderr, "[Codec] Wrote %s: %d samples @ %d Hz, %.2f s\n", out_str.c_str(), (int) audio.size(),
                         pc.sample_rate, (double) audio.size() / (double) pc.sample_rate);
             }
         }

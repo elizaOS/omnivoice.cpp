@@ -344,6 +344,6 @@ static bool audio_write_wav(const char * path, const float * audio, int T_audio,
     fclose(fp);
 
     const char * fmt_name = (fmt == WAV_S16) ? "S16" : (fmt == WAV_S24) ? "S24" : "F32";
-    fprintf(stderr, "[WAV] Wrote %s : %d samples, %d Hz, mono %s\n", path, T_audio, sr, fmt_name);
+    fprintf(stderr, "[WAV] Wrote %s: %d samples, %d Hz, mono %s\n", path, T_audio, sr, fmt_name);
     return true;
 }

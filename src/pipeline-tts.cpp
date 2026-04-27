@@ -70,7 +70,9 @@ std::vector<float> pipeline_tts_llm_forward(PipelineTTS *   pt,
                                             const int32_t * audio_mask,
                                             const int32_t * attention_mask,
                                             int             K,
-                                            int             S) {
+                                            int             S,
+                                            const char *    dump_hidden_dir,
+                                            const char *    dump_hidden_name) {
     if (K <= 0 || S <= 0) {
         return {};
     }
@@ -96,14 +98,18 @@ std::vector<float> pipeline_tts_llm_forward(PipelineTTS *   pt,
         }
     }
 
-    // Convert int 0/1 attention mask to F16 (-INF / 0). GGML layout for
-    // flash_attn_ext is ne[0]=n_kv, ne[1]=n_q, indexed linear = q*S + kv.
+    // Convert int 0/1 attention mask to F16 additive bias matching the Python
+    // reference. OmniVoice passes a boolean attention_mask to transformers,
+    // which promotes True/False to 1.0/0.0 floats and adds it to the attention
+    // scores : allowed positions get a +1.0 boost, blocked positions stay at
+    // 0.0. This is not a hard mask : every position still contributes to the
+    // softmax, the model was trained against this exact bias semantics.
     std::vector<uint16_t> attn_f16;
     if (attention_mask) {
         attn_f16.resize((size_t) S * (size_t) S);
         for (int sq = 0; sq < S; sq++) {
             for (int skv = 0; skv < S; skv++) {
-                float v = (attention_mask[(size_t) sq * (size_t) S + (size_t) skv] != 0) ? 0.0f : -INFINITY;
+                float v = (attention_mask[(size_t) sq * (size_t) S + (size_t) skv] != 0) ? 1.0f : 0.0f;
                 attn_f16[(size_t) sq * (size_t) S + (size_t) skv] = ggml_fp32_to_fp16(v);
             }
         }
@@ -163,8 +169,27 @@ std::vector<float> pipeline_tts_llm_forward(PipelineTTS *   pt,
     struct ggml_tensor * inputs_embeds = ggml_add(gctx, text_branch, audio_branch);
 
     // 28L Qwen3 stack + final RMSNorm. Mask is forwarded through (NULL -> bidir).
-    struct ggml_tensor * hidden = qwen3_build_layers(gctx, cfg, pt->lm.layers, pt->lm.final_norm, inputs_embeds,
-                                                     t_positions, t_attn, S, pt->use_flash_attn, pt->clamp_fp16);
+    // When dumping is active we also expose the input embedding (pre layer 0)
+    // and a few mid stack hidden states so a Python reference can bisect the
+    // origin of any drift layer by layer.
+    std::vector<int>                  dump_layer_indices;
+    std::vector<struct ggml_tensor *> dump_intermediates;
+    if (dump_hidden_dir && dump_hidden_name) {
+        dump_layer_indices = { 0, 6, 13, 20 };
+        ggml_set_name(inputs_embeds, "lm_inputs_embeds");
+        ggml_set_output(inputs_embeds);
+    }
+    struct ggml_tensor * hidden = qwen3_build_layers(
+        gctx, cfg, pt->lm.layers, pt->lm.final_norm, inputs_embeds, t_positions, t_attn, S, pt->use_flash_attn,
+        pt->clamp_fp16, dump_hidden_dir && dump_hidden_name ? &dump_layer_indices : nullptr,
+        dump_hidden_dir && dump_hidden_name ? &dump_intermediates : nullptr);
+    if (dump_hidden_dir && dump_hidden_name) {
+        for (struct ggml_tensor * t : dump_intermediates) {
+            ggml_set_output(t);
+        }
+        ggml_set_name(hidden, "lm_last_hidden");
+        ggml_set_output(hidden);
+    }
 
     // audio_heads readout + reshape to (V, K, S).
     struct ggml_tensor * logits_flat = ggml_mul_mat(gctx, pt->lm.audio_heads, hidden);
@@ -210,6 +235,36 @@ std::vector<float> pipeline_tts_llm_forward(PipelineTTS *   pt,
     std::vector<float> out(n);
     ggml_backend_tensor_get(logits, out.data(), 0, n * sizeof(float));
 
+    if (dump_hidden_dir && dump_hidden_name) {
+        DebugDumper dbg;
+        debug_init(&dbg, dump_hidden_dir);
+
+        auto dump_tensor_2d = [&](struct ggml_tensor * t, const std::string & full_name) {
+            const int          dim0  = (int) t->ne[0];
+            const int          dim1  = (int) t->ne[1];
+            const size_t       numel = (size_t) dim0 * (size_t) dim1;
+            std::vector<float> buf(numel);
+            ggml_backend_tensor_get(t, buf.data(), 0, numel * sizeof(float));
+            // GGML layout : fast axis is dim0, slow axis is dim1. Numpy reads
+            // back as [dim1, dim0] row-major, identical to hidden_states[b]
+            // and inputs_embeds[b] from the Python reference.
+            debug_dump_2d(&dbg, full_name.c_str(), buf.data(), dim1, dim0);
+        };
+
+        // Pre layer 0 embedding.
+        dump_tensor_2d(inputs_embeds, std::string(dump_hidden_name) + "-embed");
+
+        // Mid stack hidden states, in the order set by dump_layer_indices.
+        for (size_t i = 0; i < dump_intermediates.size(); i++) {
+            char suffix[32];
+            snprintf(suffix, sizeof(suffix), "-l%d", dump_layer_indices[i]);
+            dump_tensor_2d(dump_intermediates[i], std::string(dump_hidden_name) + suffix);
+        }
+
+        // Final hidden, post output norm, pre lm_head.
+        dump_tensor_2d(hidden, dump_hidden_name);
+    }
+
     ggml_gallocr_free(alloc);
     ggml_free(gctx);
     return out;
@@ -224,7 +279,8 @@ std::vector<float> pipeline_tts_llm_forward_batched(PipelineTTS *   pt,
                                                     const int32_t * attention_mask,
                                                     int             B_prime,
                                                     int             K,
-                                                    int             S) {
+                                                    int             S,
+                                                    const char *    dump_hidden_dir) {
     if (B_prime <= 0 || K <= 0 || S <= 0) {
         return {};
     }
@@ -237,7 +293,23 @@ std::vector<float> pipeline_tts_llm_forward_batched(PipelineTTS *   pt,
         const int32_t * mask_b = audio_mask + (size_t) b * (size_t) S;
         const int32_t * attn_b = attention_mask ? attention_mask + (size_t) b * (size_t) S * (size_t) S : NULL;
 
-        std::vector<float> logits_b = pipeline_tts_llm_forward(pt, ids_b, mask_b, attn_b, K, S);
+        // Cond is row 0, uncond is row 1 (CFG batching convention). Map to
+        // human readable names so the Python reference can be paired easily.
+        const char * hidden_name = nullptr;
+        char         hidden_buf[64];
+        if (dump_hidden_dir) {
+            if (b == 0) {
+                hidden_name = "lm-hidden-step0-cond";
+            } else if (b == 1) {
+                hidden_name = "lm-hidden-step0-uncond";
+            } else {
+                snprintf(hidden_buf, sizeof(hidden_buf), "lm-hidden-step0-b%d", b);
+                hidden_name = hidden_buf;
+            }
+        }
+
+        std::vector<float> logits_b =
+            pipeline_tts_llm_forward(pt, ids_b, mask_b, attn_b, K, S, dump_hidden_dir, hidden_name);
         if (logits_b.size() != per_item) {
             fprintf(stderr, "[LM-Forward] FATAL: batched item %d returned %zu f32 (expected %zu)\n", b, logits_b.size(),
                     per_item);
@@ -272,12 +344,22 @@ std::vector<int32_t> pipeline_tts_generate(PipelineTTS *         pt,
         return {};
     }
 
+    // Dump cond and uncond input_ids row k=0 for prompt diagnostic. Style and
+    // text tokens are duplicated across all K codebooks so k=0 is enough.
+    {
+        DebugDumper dbg;
+        debug_init(&dbg, dump_dir);
+        int             ids_shape[1] = { prompt.c_len };
+        const int32_t * cond_row     = prompt.input_ids.data();
+        const int32_t * uncond_row   = prompt.input_ids.data() + (size_t) prompt.K * (size_t) prompt.c_len;
+        debug_dump_i32_as_f32(&dbg, "prompt-cond-ids", cond_row, ids_shape, 1);
+        debug_dump_i32_as_f32(&dbg, "prompt-uncond-ids", uncond_row, ids_shape, 1);
+    }
+
     fprintf(stderr, "[TTS] Prompt: B'=%d K=%d S=%d c_len=%d u_len=%d\n", prompt.B_prime, prompt.K, prompt.S_max,
             prompt.c_len, prompt.u_len);
 
-    (void) dump_dir;  // reserved for future intermediate dumps inside the maskgit loop
-
-    return maskgit_generate(pt, &prompt, mg_cfg, T);
+    return maskgit_generate(pt, &prompt, mg_cfg, T, dump_dir);
 }
 
 // Full TTS synthesis : tokens via pipeline_tts_generate, waveform via
