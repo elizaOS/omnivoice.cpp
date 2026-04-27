@@ -322,13 +322,13 @@ std::vector<float> pipeline_tts_synthesize(PipelineTTS *         pt,
     DebugDumper dbg;
     debug_init(&dbg, dump_dir);
     int tokens_shape[2] = { K, T };
-    debug_dump_i32_as_f32(&dbg, "mg_tokens", tokens.data(), tokens_shape, 2);
+    debug_dump_i32_as_f32(&dbg, "mg-tokens", tokens.data(), tokens_shape, 2);
 
     fprintf(stderr, "[TTS] Decode: K=%d T=%d expected_samples=%d\n", K, T, T * pc->hop_length);
     std::vector<float> audio = pipeline_codec_decode(pc, tokens.data(), K, T);
 
     if (!audio.empty()) {
-        debug_dump_1d(&dbg, "output_audio", audio.data(), (int) audio.size());
+        debug_dump_1d(&dbg, "output-audio", audio.data(), (int) audio.size());
     }
     return audio;
 }

@@ -9,15 +9,14 @@ Both sides run with :
     process. Defaults match : num_step=32, guidance_scale=2.0, t_shift=0.1,
     layer_penalty_factor=5.0, position_temperature=5.0, class_temperature=0.0.
 
-Dumps land in tmp/cpp/ (C++) and tmp/pt/ (Python). The script compares each
+Dumps land in cpp/ (C++) and python/ (Python). The script compares each
 matching .bin pair via cosine similarity over the f32 payload, plus exact
-match rate for tensors that originated as int (mg_tokens). All paths are
+match rate for tensors that originated as int (mg-tokens). All paths are
 relative, no absolute paths anywhere.
 """
 
 import argparse
 import os
-import shutil
 import struct
 import subprocess
 import sys
@@ -33,8 +32,8 @@ BIN        = "../build/omnivoice-tts"
 MODEL_LM   = "../models/omnivoice-base-F32.gguf"
 MODEL_CDC  = "../models/omnivoice-tokenizer-F32.gguf"
 CKPT       = "../checkpoints/OmniVoice"
-DUMP_CPP   = "tmp/cpp"
-DUMP_PT    = "tmp/pt"
+DUMP_CPP   = "cpp"
+DUMP_PT    = "python"
 
 def cuda_props():
     """Return (sm_count, max_threads_per_sm) of the active CUDA device.
@@ -46,9 +45,7 @@ def cuda_props():
     p = torch.cuda.get_device_properties(torch.cuda.current_device())
     return p.multi_processor_count, p.max_threads_per_multi_processor
 
-def ensure_clean(path):
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
 def save_dump(path, data):
@@ -82,17 +79,17 @@ def cos(a, b):
     return float(np.dot(a, b) / d) if d > 1e-10 else 0.0
 
 def install_hooks(model, dump_dir):
-    """Hook the Python pipeline to dump mg_tokens and output_audio under dump_dir.
+    """Hook the Python pipeline to dump mg-tokens and output-audio under dump_dir.
 
-    mg_tokens   : output of model._generate_iterative for item 0, shape [K, T].
-    output_audio: output of model.audio_tokenizer.decode for item 0, shape [N].
+    mg-tokens   : output of model._generate_iterative for item 0, shape [K, T].
+    output-audio: output of model.audio_tokenizer.decode for item 0, shape [N].
     """
 
     orig_generate = model._generate_iterative
     def hooked_generate(task, gen_config):
         out = orig_generate(task, gen_config)
         # out is a list of (K, T_i) long tensors, one per batch item.
-        save_dump(os.path.join(dump_dir, "mg_tokens.bin"), out[0])
+        save_dump(os.path.join(dump_dir, "mg-tokens.bin"), out[0])
         return out
     model._generate_iterative = hooked_generate
 
@@ -110,7 +107,7 @@ def install_hooks(model, dump_dir):
             arr = arr[0, 0]
         elif arr.ndim == 2:
             arr = arr[0]
-        save_dump(os.path.join(dump_dir, "output_audio.bin"), arr)
+        save_dump(os.path.join(dump_dir, "output-audio.bin"), arr)
         return out
     model.audio_tokenizer.decode = hooked_decode
 
@@ -121,12 +118,12 @@ def main():
     ap.add_argument("--instruct", default="male")
     ap.add_argument("--lang",     default="French")
     ap.add_argument("--duration", type=float, default=None)
-    ap.add_argument("--out-cpp",  default="tmp/tts_cpp.wav")
-    ap.add_argument("--out-pt",   default="tmp/tts_pt.wav")
+    ap.add_argument("--out-cpp",  default="cpp/tts-cpp.wav")
+    ap.add_argument("--out-pt",   default="python/tts-python.wav")
     args = ap.parse_args()
 
-    ensure_clean(DUMP_CPP)
-    ensure_clean(DUMP_PT)
+    ensure_dir(DUMP_CPP)
+    ensure_dir(DUMP_PT)
     os.makedirs(os.path.dirname(args.out_cpp) or ".", exist_ok=True)
 
     with open(args.prompt, "r", encoding="utf-8") as f:
@@ -167,7 +164,7 @@ def main():
     torch.cuda.empty_cache()
 
     # C++ path : same text, same instruct, same seed, F32 GGUF weights,
-    # dumps under tmp/cpp/.
+    # dumps under cpp/.
     cmd = [
         BIN,
         "--model",       MODEL_LM,
@@ -204,7 +201,7 @@ def main():
         n = min(a.size, b.size)
         c = cos(a, b)
         line = f"  {name:24s} cos={c:.6f}  cpp_shape={sa}  pt_shape={sb}"
-        if name == "mg_tokens.bin":
+        if name == "mg-tokens.bin":
             ai = a.astype(np.int64).ravel()[:n]
             bi = b.astype(np.int64).ravel()[:n]
             match = float(np.mean(ai == bi))
