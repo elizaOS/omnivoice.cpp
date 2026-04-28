@@ -54,9 +54,9 @@ and Vulkan kernels.
 ## Model conversion
 
 ```
-./checkpoints.sh       # hf download k2-fsa/OmniVoice -> checkpoints/OmniVoice/
-./convert.py           # 2 GGUFs in BF16 -> models/
-./quantize.sh          # base LM Q8_0 (tokenizer stays at native dtype)
+./checkpoints.sh    # hf download k2-fsa/OmniVoice -> checkpoints/OmniVoice/
+./convert.py        # 2 GGUFs in BF16 -> models/
+./quantize.sh       # base LM Q8_0 (tokenizer stays at native dtype)
 ```
 
 Outputs :
@@ -123,29 +123,29 @@ tensors (312)
 
 ```
 metadata
-  omnivoice.sample_rate                  24000
-  omnivoice.semantic_sample_rate         16000
-  omnivoice.downsample_factor            320
-  omnivoice.codebook_size                1024
-  omnivoice.codebook_dim                 64
-  omnivoice.acoustic.encoder_hidden_size 64
-  omnivoice.acoustic.decoder_hidden_size 1024
-  omnivoice.acoustic.hidden_size         256
-  omnivoice.acoustic.n_codebooks         9        (only 8 used)
-  omnivoice.acoustic.hop_length          960
-  omnivoice.acoustic.upsampling_ratios   [8, 5, 4, 2, 3]
-  omnivoice.acoustic.downsampling_ratios [8, 5, 4, 2, 3]
-  omnivoice.semantic.hidden_size         768       (HuBERT base)
-  omnivoice.semantic.intermediate_size   3072
-  omnivoice.semantic.num_attention_heads 12
-  omnivoice.semantic.num_hidden_layers   12
-  omnivoice.semantic.num_feat_extract_layers 7
-  omnivoice.semantic.conv_dim            [512]*7
-  omnivoice.semantic.conv_kernel         [10, 3, 3, 3, 3, 2, 2]
-  omnivoice.semantic.conv_stride         [5, 2, 2, 2, 2, 2, 2]
+  omnivoice.sample_rate                             24000
+  omnivoice.semantic_sample_rate                    16000
+  omnivoice.downsample_factor                       320
+  omnivoice.codebook_size                           1024
+  omnivoice.codebook_dim                            64
+  omnivoice.acoustic.encoder_hidden_size            64
+  omnivoice.acoustic.decoder_hidden_size            1024
+  omnivoice.acoustic.hidden_size                    256
+  omnivoice.acoustic.n_codebooks                    9        (only 8 used)
+  omnivoice.acoustic.hop_length                     960
+  omnivoice.acoustic.upsampling_ratios              [8, 5, 4, 2, 3]
+  omnivoice.acoustic.downsampling_ratios            [8, 5, 4, 2, 3]
+  omnivoice.semantic.hidden_size                    768       (HuBERT base)
+  omnivoice.semantic.intermediate_size              3072
+  omnivoice.semantic.num_attention_heads            12
+  omnivoice.semantic.num_hidden_layers              12
+  omnivoice.semantic.num_feat_extract_layers        7
+  omnivoice.semantic.conv_dim                       [512]*7
+  omnivoice.semantic.conv_kernel                    [10, 3, 3, 3, 3, 2, 2]
+  omnivoice.semantic.conv_stride                    [5, 2, 2, 2, 2, 2, 2]
   omnivoice.semantic.num_conv_pos_embeddings        128
   omnivoice.semantic.num_conv_pos_embedding_groups  16
-  omnivoice.semantic.layer_norm_eps      1e-5
+  omnivoice.semantic.layer_norm_eps                 1e-5
 
 tensors (486)
   acoustic_encoder.*                     DAC encoder, 5 blocks, downsamples 8 5 4 2 3
@@ -367,7 +367,7 @@ Per-codebook tensors (k = 0..7) :
 ```
 codebook.embed         (1024, 64) PyTorch -> ggml ne=(64, 1024)
 project_in.weight      (64, 1024) PyTorch -> ggml ne=(1024, 64)   encode-only
-project_in.bias        (64,)                                       encode-only
+project_in.bias        (64,)                                      encode-only
 project_out.weight     (1024, 64) PyTorch -> ggml ne=(64, 1024)
 project_out.bias       (1024,)
 ```
@@ -405,7 +405,7 @@ the first only, GELU between. Feature projection LayerNorm + Linear
 Output computation :
 
 ```
-mean(stack(all_13_hidden_states, dim=1), dim=1)            # (B, T_sem, 768)
+mean(stack(all_13_hidden_states, dim=1), dim=1) # (B, T_sem, 768)
 ```
 
 This is unusual : the encoder averages across the initial input plus
