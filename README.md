@@ -32,9 +32,9 @@ cd omnivoice.cpp
 ## Model conversion
 
 ```
-./checkpoints.sh       # hf download k2-fsa/OmniVoice -> checkpoints/
-./convert.py           # 2 GGUFs in BF16 -> models/
-./quantize.sh          # base LM Q8_0 (tokenizer stays at native dtype)
+./checkpoints.sh      # hf download k2-fsa/OmniVoice -> checkpoints/
+./convert.py          # 2 GGUFs in BF16 -> models/
+./quantize.sh         # base LM Q8_0 (tokenizer stays at native dtype)
 ```
 
 ## Quick start
