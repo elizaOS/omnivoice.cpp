@@ -7,12 +7,14 @@
 // tensors and bypass the codec decode.
 
 #include "audio-io.h"
+#include "audio-postproc.h"
 #include "backend.h"
 #include "bpe.h"
 #include "duration-estimator.h"
 #include "maskgit-tts.h"
 #include "pipeline-codec.h"
 #include "pipeline-tts.h"
+#include "text-chunker.h"
 #include "version.h"
 #include "voice-design.h"
 
@@ -45,7 +47,10 @@ static void print_usage(const char * prog) {
             "  --no-denoise            Omit the <|denoise|> prefix\n"
             "  --ref-wav <path>        Reference WAV for voice cloning\n"
             "  --ref-text <path>       Transcript file for the reference (required with --ref-wav)\n"
-            "  --seed <int>            Sampling seed (default: -1 for random)\n\n"
+            "  --seed <int>            Sampling seed (default: -1 for random)\n"
+            "  --no-preprocess-prompt  Skip ref-wav silence trim and ref-text terminal punctuation\n"
+            "  --chunk-duration <sec>  Long-form chunk duration (default: 15.0, <= 0 disables chunking)\n"
+            "  --chunk-threshold <sec> Activate chunking above this estimated duration (default: 30.0)\n\n"
             "Debug:\n"
             "  --no-fa                 Disable flash attention (matches Python eager attention)\n"
             "  --clamp-fp16            Clamp hidden states to FP16 range\n"
@@ -209,6 +214,9 @@ int main(int argc, char ** argv) {
     int          prompt_duration_tokens = 0;
     float        prompt_duration_sec    = 0.0f;
     bool         prompt_denoise         = true;
+    bool         preprocess_prompt      = true;
+    float        chunk_duration_sec     = 15.0f;
+    float        chunk_threshold_sec    = 30.0f;
     const char * ref_wav_path           = NULL;
     const char * ref_text_path          = NULL;
     const char * inject_codes_path      = NULL;
@@ -240,6 +248,12 @@ int main(int argc, char ** argv) {
             prompt_duration_sec = (float) atof(argv[++i]);
         } else if (strcmp(argv[i], "--no-denoise") == 0) {
             prompt_denoise = false;
+        } else if (strcmp(argv[i], "--no-preprocess-prompt") == 0) {
+            preprocess_prompt = false;
+        } else if (strcmp(argv[i], "--chunk-duration") == 0 && i + 1 < argc) {
+            chunk_duration_sec = (float) atof(argv[++i]);
+        } else if (strcmp(argv[i], "--chunk-threshold") == 0 && i + 1 < argc) {
+            chunk_threshold_sec = (float) atof(argv[++i]);
         } else if (strcmp(argv[i], "--ref-wav") == 0 && i + 1 < argc) {
             ref_wav_path = argv[++i];
         } else if (strcmp(argv[i], "--ref-text") == 0 && i + 1 < argc) {
@@ -408,108 +422,140 @@ int main(int argc, char ** argv) {
             std::vector<int32_t> ref_codes;
             int                  ref_T = 0;
             std::string          ref_text;
+            float                ref_rms_for_postproc = -1.0f;
             if (ref_wav_path || inject_codes_path) {
                 if (!read_text_file(ref_text_path, ref_text)) {
                     rc = 1;
-                } else if (inject_codes_path) {
-                    // Bypass : load codes from a Python save_dump file
-                    //   [i32 ndim=2][i32 K][i32 T][f32 K*T data]
-                    // Codes are stored as float32 by save_dump but represent
-                    // exact integer values, so cast back to i32 is lossless.
-                    FILE * f = fopen(inject_codes_path, "rb");
-                    if (!f) {
-                        fprintf(stderr, "[CLI] ERROR: failed to open %s\n", inject_codes_path);
-                        rc = 1;
-                    } else {
-                        int32_t ndim     = 0;
-                        int32_t K_loaded = 0, T_loaded = 0;
-                        size_t  rd = 0;
-                        rd += fread(&ndim, sizeof(int32_t), 1, f);
-                        rd += fread(&K_loaded, sizeof(int32_t), 1, f);
-                        rd += fread(&T_loaded, sizeof(int32_t), 1, f);
-                        const int K_expected = pt.lm.num_audio_codebook;
-                        if (rd != 3 || ndim != 2 || K_loaded != K_expected || T_loaded <= 0) {
-                            fprintf(stderr, "[CLI] ERROR: bad inject-codes header ndim=%d K=%d T=%d (expected K=%d)\n",
-                                    ndim, K_loaded, T_loaded, K_expected);
-                            rc = 1;
-                        } else {
-                            size_t             n = (size_t) K_loaded * (size_t) T_loaded;
-                            std::vector<float> raw(n);
-                            size_t             got = fread(raw.data(), sizeof(float), n, f);
-                            if (got != n) {
-                                fprintf(stderr, "[CLI] ERROR: inject-codes short read got=%zu expected=%zu\n", got, n);
-                                rc = 1;
-                            } else {
-                                ref_codes.resize(n);
-                                for (size_t i = 0; i < n; i++) {
-                                    ref_codes[i] = (int32_t) raw[i];
-                                }
-                                ref_T = T_loaded;
-                                fprintf(stderr, "[TTS] Reference: injected codes from %s [K=%d, T=%d]\n",
-                                        inject_codes_path, K_loaded, T_loaded);
-                                if (dump_dir) {
-                                    DebugDumper dbg;
-                                    debug_init(&dbg, dump_dir);
-                                    int ref_shape[2] = { K_loaded, T_loaded };
-                                    debug_dump_i32_as_f32(&dbg, "ref-audio-codes", ref_codes.data(), ref_shape, 2);
-                                }
-                            }
-                        }
-                        fclose(f);
-                    }
                 } else {
-                    int     n_samples = 0;
-                    float * ref_audio = audio_read_mono(ref_wav_path, 24000, &n_samples);
-                    if (!ref_audio || n_samples <= 0) {
-                        fprintf(stderr, "[CLI] ERROR: failed to load %s\n", ref_wav_path);
-                        rc = 1;
-                    } else {
-                        // Mirror Python OmniVoice : auto loudness normalization
-                        // when ref RMS is in (0, 0.1). Scales the buffer so
-                        // that the new RMS hits exactly 0.1.
-                        double sumsq = 0.0;
-                        for (int i = 0; i < n_samples; i++) {
-                            sumsq += (double) ref_audio[i] * (double) ref_audio[i];
-                        }
-                        double ref_rms = std::sqrt(sumsq / (double) n_samples);
-                        if (ref_rms > 0.0 && ref_rms < 0.1) {
-                            float gain = (float) (0.1 / ref_rms);
-                            for (int i = 0; i < n_samples; i++) {
-                                ref_audio[i] *= gain;
-                            }
-                            fprintf(stderr, "[TTS] Reference: RMS %.4f -> 0.1 gain %.4f\n", ref_rms, gain);
-                        }
-                        // Mirror Python: truncate ref audio to a multiple of
-                        // hop_length before encode so the codec consumes the
-                        // exact same samples on both sides.
-                        int n_aligned = (n_samples / pc.hop_length) * pc.hop_length;
-                        fprintf(
-                            stderr, "[TTS] Reference: %s, %d samples @ 24 kHz mono (%.2f s), aligned to %d (clip %d)\n",
-                            ref_wav_path, n_samples, (double) n_samples / 24000.0, n_aligned, n_samples - n_aligned);
-                        if (dump_dir) {
-                            DebugDumper dbg;
-                            debug_init(&dbg, dump_dir);
-                            debug_dump_1d(&dbg, "ref-audio-24k", ref_audio, n_aligned);
-                        }
-                        ref_codes = pipeline_codec_encode(&pc, ref_audio, n_aligned, dump_dir);
-                        free(ref_audio);
-                        if (ref_codes.empty()) {
-                            fprintf(stderr, "[CLI] ERROR: codec_encode failed on %s\n", ref_wav_path);
+                    // Mirror Python preprocess_prompt: append a terminal "."
+                    // (or ideographic full stop for CJK) when missing. This
+                    // happens before encoding regardless of inject vs ref-wav.
+                    if (preprocess_prompt) {
+                        ref_text = add_punctuation(ref_text);
+                    }
+
+                    if (inject_codes_path) {
+                        // Bypass : load codes from a Python save_dump file
+                        //   [i32 ndim=2][i32 K][i32 T][f32 K*T data]
+                        // Codes are stored as float32 by save_dump but represent
+                        // exact integer values, so cast back to i32 is lossless.
+                        FILE * f = fopen(inject_codes_path, "rb");
+                        if (!f) {
+                            fprintf(stderr, "[CLI] ERROR: failed to open %s\n", inject_codes_path);
                             rc = 1;
                         } else {
-                            const int K = pt.lm.num_audio_codebook;
-                            if ((int) ref_codes.size() % K != 0) {
-                                fprintf(stderr, "[CLI] ERROR: ref codes size %zu not divisible by K=%d\n",
-                                        ref_codes.size(), K);
+                            int32_t ndim     = 0;
+                            int32_t K_loaded = 0, T_loaded = 0;
+                            size_t  rd = 0;
+                            rd += fread(&ndim, sizeof(int32_t), 1, f);
+                            rd += fread(&K_loaded, sizeof(int32_t), 1, f);
+                            rd += fread(&T_loaded, sizeof(int32_t), 1, f);
+                            const int K_expected = pt.lm.num_audio_codebook;
+                            if (rd != 3 || ndim != 2 || K_loaded != K_expected || T_loaded <= 0) {
+                                fprintf(stderr,
+                                        "[CLI] ERROR: bad inject-codes header ndim=%d K=%d T=%d (expected K=%d)\n",
+                                        ndim, K_loaded, T_loaded, K_expected);
                                 rc = 1;
                             } else {
-                                ref_T = (int) ref_codes.size() / K;
-                                fprintf(stderr, "[TTS] Reference: encoded to [K=%d, T=%d] codes\n", K, ref_T);
-                                if (dump_dir) {
-                                    DebugDumper dbg;
-                                    debug_init(&dbg, dump_dir);
-                                    int ref_shape[2] = { K, ref_T };
-                                    debug_dump_i32_as_f32(&dbg, "ref-audio-codes", ref_codes.data(), ref_shape, 2);
+                                size_t             n = (size_t) K_loaded * (size_t) T_loaded;
+                                std::vector<float> raw(n);
+                                size_t             got = fread(raw.data(), sizeof(float), n, f);
+                                if (got != n) {
+                                    fprintf(stderr, "[CLI] ERROR: inject-codes short read got=%zu expected=%zu\n", got,
+                                            n);
+                                    rc = 1;
+                                } else {
+                                    ref_codes.resize(n);
+                                    for (size_t i = 0; i < n; i++) {
+                                        ref_codes[i] = (int32_t) raw[i];
+                                    }
+                                    ref_T = T_loaded;
+                                    fprintf(stderr, "[TTS] Reference: injected codes from %s [K=%d, T=%d]\n",
+                                            inject_codes_path, K_loaded, T_loaded);
+                                    if (dump_dir) {
+                                        DebugDumper dbg;
+                                        debug_init(&dbg, dump_dir);
+                                        int ref_shape[2] = { K_loaded, T_loaded };
+                                        debug_dump_i32_as_f32(&dbg, "ref-audio-codes", ref_codes.data(), ref_shape, 2);
+                                    }
+                                }
+                            }
+                            fclose(f);
+                        }
+                    } else {
+                        int     n_samples = 0;
+                        float * raw       = audio_read_mono(ref_wav_path, 24000, &n_samples);
+                        if (!raw || n_samples <= 0) {
+                            fprintf(stderr, "[CLI] ERROR: failed to load %s\n", ref_wav_path);
+                            rc = 1;
+                        } else {
+                            std::vector<float> ref_audio(raw, raw + n_samples);
+                            free(raw);
+
+                            // Mirror Python OmniVoice : compute ref_rms once on
+                            // the loaded waveform. Auto loudness normalisation
+                            // when ref RMS is in (0, 0.1). Scales the buffer so
+                            // the new RMS hits exactly 0.1 ; the ORIGINAL ref_rms
+                            // is what we plumb into the post-proc to rescale the
+                            // generated output back to the reference loudness.
+                            double sumsq = 0.0;
+                            for (float v : ref_audio) {
+                                sumsq += (double) v * (double) v;
+                            }
+
+                            double ref_rms       = std::sqrt(sumsq / (double) ref_audio.size());
+                            ref_rms_for_postproc = (float) ref_rms;
+
+                            if (ref_rms > 0.0 && ref_rms < 0.1) {
+                                float gain = (float) (0.1 / ref_rms);
+                                for (float & v : ref_audio) {
+                                    v *= gain;
+                                }
+
+                                fprintf(stderr, "[TTS] Reference: RMS %.4f -> 0.1 gain %.4f\n", ref_rms, gain);
+                            }
+
+                            // Mirror Python preprocess_prompt: silence-trim the
+                            // reference clip with mid=200ms, lead=100ms,
+                            // trail=200ms, threshold=-50 dBFS before encoding.
+                            if (preprocess_prompt) {
+                                size_t before = ref_audio.size();
+                                remove_silence(ref_audio, 24000, 200, 100, 200, -50.0);
+                                fprintf(stderr, "[TTS] Reference: silence-trim %zu -> %zu samples\n", before,
+                                        ref_audio.size());
+                            }
+
+                            int n_in      = (int) ref_audio.size();
+                            int n_aligned = (n_in / pc.hop_length) * pc.hop_length;
+                            fprintf(stderr,
+                                    "[TTS] Reference: %s, %d samples @ 24 kHz mono (%.2f s), aligned to %d (clip %d)\n",
+                                    ref_wav_path, n_in, (double) n_in / 24000.0, n_aligned, n_in - n_aligned);
+
+                            if (dump_dir) {
+                                DebugDumper dbg;
+                                debug_init(&dbg, dump_dir);
+                                debug_dump_1d(&dbg, "ref-audio-24k", ref_audio.data(), n_aligned);
+                            }
+
+                            ref_codes = pipeline_codec_encode(&pc, ref_audio.data(), n_aligned, dump_dir);
+                            if (ref_codes.empty()) {
+                                fprintf(stderr, "[CLI] ERROR: codec_encode failed on %s\n", ref_wav_path);
+                                rc = 1;
+                            } else {
+                                const int K = pt.lm.num_audio_codebook;
+                                if ((int) ref_codes.size() % K != 0) {
+                                    fprintf(stderr, "[CLI] ERROR: ref codes size %zu not divisible by K=%d\n",
+                                            ref_codes.size(), K);
+                                    rc = 1;
+                                } else {
+                                    ref_T = (int) ref_codes.size() / K;
+                                    fprintf(stderr, "[TTS] Reference: encoded to [K=%d, T=%d] codes\n", K, ref_T);
+                                    if (dump_dir) {
+                                        DebugDumper dbg;
+                                        debug_init(&dbg, dump_dir);
+                                        int ref_shape[2] = { K, ref_T };
+                                        debug_dump_i32_as_f32(&dbg, "ref-audio-codes", ref_codes.data(), ref_shape, 2);
+                                    }
                                 }
                             }
                         }
@@ -532,24 +578,23 @@ int main(int argc, char ** argv) {
                 if (!resolve_instruct(&vd, text, raw_instruct, &instruct)) {
                     rc = 1;
                 } else {
-                    // Resolve target frame count : explicit --duration in
-                    // seconds, converted via the codec's exact frame rate.
-                    // Otherwise, estimate from text using the byte-perfect
-                    // RuleDurationEstimator mirror, with the reference clip
-                    // (when present) as the anchor.
+                    // Resolve target frame count override from --duration. When
+                    // unset, pipeline_tts_synthesize_long estimates internally
+                    // and may activate long-form chunking. An explicit value
+                    // forces the single-shot path with that exact frame count.
+                    int T_override = 0;
                     if (prompt_duration_sec > 0.0f) {
-                        float frame_rate       = (float) pc.sample_rate / (float) pc.hop_length;
-                        prompt_duration_tokens = (int) (prompt_duration_sec * frame_rate);
-                        if (prompt_duration_tokens < 1) {
-                            prompt_duration_tokens = 1;
+                        float frame_rate = (float) pc.sample_rate / (float) pc.hop_length;
+                        T_override       = (int) (prompt_duration_sec * frame_rate);
+                        if (T_override < 1) {
+                            T_override = 1;
                         }
-                    } else {
-                        prompt_duration_tokens = duration_estimate_tokens(text, ref_text, ref_T);
                     }
 
-                    std::vector<float> audio = pipeline_tts_synthesize(
-                        &pt, &pc, &tok, text, lang, instruct, prompt_duration_tokens, prompt_denoise, mg_cfg, ref_text,
-                        ref_codes.empty() ? NULL : ref_codes.data(), ref_T, dump_dir);
+                    std::vector<float> audio = pipeline_tts_synthesize_long(
+                        &pt, &pc, &tok, text, lang, instruct, T_override, chunk_duration_sec, chunk_threshold_sec,
+                        prompt_denoise, mg_cfg, ref_text, ref_codes.empty() ? NULL : ref_codes.data(), ref_T,
+                        ref_rms_for_postproc, dump_dir);
                     if (audio.empty()) {
                         rc = 1;
                     } else if (!audio_write_wav(output_path, audio.data(), (int) audio.size(), pc.sample_rate,

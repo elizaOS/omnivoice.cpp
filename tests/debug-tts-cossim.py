@@ -150,7 +150,7 @@ def install_hooks(model, dump_dir):
     # the batch axis to match the C++ dump shape). Replicate the predict math
     # locally so log_probs / pred_tokens / scores can all be dumped from a
     # single source of truth on the Python side.
-    seen = {"step0": False}
+    seen = {"step0": False, "mg_tokens": False, "audio": False}
     orig_pred = model._predict_tokens_with_scoring
     def hooked_pred(c_logits, u_logits, gen_config):
         pred_tokens, scores = orig_pred(c_logits, u_logits, gen_config)
@@ -195,7 +195,11 @@ def install_hooks(model, dump_dir):
     def hooked_generate(task, gen_config):
         out = orig_generate(task, gen_config)
         # out is a list of (K, T_i) long tensors, one per batch item.
-        save_dump(os.path.join(dump_dir, "mg-tokens.bin"), out[0])
+        # In chunked mode this hook fires once per chunk; only the first
+        # call mirrors the chunk 0 dump on the C++ side.
+        if not seen["mg_tokens"]:
+            save_dump(os.path.join(dump_dir, "mg-tokens.bin"), out[0])
+            seen["mg_tokens"] = True
         return out
     model._generate_iterative = hooked_generate
 
@@ -204,6 +208,9 @@ def install_hooks(model, dump_dir):
         out = orig_decode(*args, **kwargs)
         # The audio tokenizer returns either a tensor or a wrapper holding
         # audio_values shape [B, C, N]. Unwrap and dump the first item mono.
+        # Same first-chunk guard as the mg-tokens hook above.
+        if seen["audio"]:
+            return out
         wav = getattr(out, "audio_values", out)
         if isinstance(wav, torch.Tensor):
             arr = wav.detach().to(torch.float32).cpu().numpy()
@@ -214,6 +221,7 @@ def install_hooks(model, dump_dir):
         elif arr.ndim == 2:
             arr = arr[0]
         save_dump(os.path.join(dump_dir, "output-audio.bin"), arr)
+        seen["audio"] = True
         return out
     model.audio_tokenizer.decode = hooked_decode
 
@@ -253,10 +261,6 @@ def main():
         language=args.lang,
         instruct=args.instruct,
         duration=args.duration,
-        denoise=True,
-        preprocess_prompt=False,
-        postprocess_output=False,
-        audio_chunk_threshold=1e9,
     )
     audios = model.generate(**gen_kwargs)
     audio_pt = np.asarray(audios[0], dtype=np.float32)

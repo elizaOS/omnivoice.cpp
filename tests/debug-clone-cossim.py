@@ -102,7 +102,7 @@ def install_hooks(model, dump_dir):
         return out
     model._prepare_embed_inputs = hooked_prepare
 
-    seen = {"step0": False}
+    seen = {"step0": False, "mg_tokens": False, "audio": False}
     orig_pred = model._predict_tokens_with_scoring
     def hooked_pred(c_logits, u_logits, gen_config):
         is_first = not seen["step0"]
@@ -148,13 +148,17 @@ def install_hooks(model, dump_dir):
     orig_generate = model._generate_iterative
     def hooked_generate(task, gen_config):
         out = orig_generate(task, gen_config)
-        save_dump(os.path.join(dump_dir, "mg-tokens.bin"), out[0])
+        if not seen["mg_tokens"]:
+            save_dump(os.path.join(dump_dir, "mg-tokens.bin"), out[0])
+            seen["mg_tokens"] = True
         return out
     model._generate_iterative = hooked_generate
 
     orig_decode = model.audio_tokenizer.decode
     def hooked_decode(*args, **kwargs):
         out = orig_decode(*args, **kwargs)
+        if seen["audio"]:
+            return out
         wav = getattr(out, "audio_values", out)
         if isinstance(wav, torch.Tensor):
             arr = wav.detach().to(torch.float32).cpu().numpy()
@@ -165,6 +169,7 @@ def install_hooks(model, dump_dir):
         elif arr.ndim == 2:
             arr = arr[0]
         save_dump(os.path.join(dump_dir, "output-audio.bin"), arr)
+        seen["audio"] = True
         return out
     model.audio_tokenizer.decode = hooked_decode
 
@@ -317,10 +322,6 @@ def main():
         ref_text=ref_text,
         ref_audio=args.ref_audio,
         duration=args.duration,
-        denoise=True,
-        preprocess_prompt=False,
-        postprocess_output=False,
-        audio_chunk_threshold=1e9,
     )
     audios = model.generate(**gen_kwargs)
     audio_pt = np.asarray(audios[0], dtype=np.float32)

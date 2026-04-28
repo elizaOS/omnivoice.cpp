@@ -99,13 +99,15 @@ std::vector<int32_t> pipeline_tts_generate(PipelineTTS *         pt,
                                            const std::string &   ref_text,
                                            const int32_t *       ref_audio_tokens,
                                            int                   ref_T,
-                                           const char *          dump_dir);
+                                           const char *          dump_dir,
+                                           uint32_t *            ctr_lo_inout = nullptr);
 
 // Full TTS synthesis : pipeline_tts_generate followed by pipeline_codec_decode.
 // Returns mono waveform at 24 kHz of length T * codec.hop_length, empty on
 // failure. Refuses to decode if any audio_token equals lm.audio_mask_id, which
 // would corrupt the RVQ lookup. ref_text and ref_audio_tokens follow the same
-// convention as pipeline_tts_generate.
+// convention as pipeline_tts_generate. ctr_lo_inout threads the Philox counter
+// across calls when chunking, see maskgit_generate.
 std::vector<float> pipeline_tts_synthesize(PipelineTTS *         pt,
                                            PipelineCodec *       pc,
                                            const BPETokenizer *  tok,
@@ -118,4 +120,37 @@ std::vector<float> pipeline_tts_synthesize(PipelineTTS *         pt,
                                            const std::string &   ref_text,
                                            const int32_t *       ref_audio_tokens,
                                            int                   ref_T,
-                                           const char *          dump_dir);
+                                           const char *          dump_dir,
+                                           uint32_t *            ctr_lo_inout = nullptr);
+
+// Long-form TTS with automatic chunking and post-processing. If
+// chunk_duration_sec <= 0 or the estimated audio length fits below
+// chunk_threshold_sec, behaves as a single pipeline_tts_synthesize call. For
+// longer text, splits on punctuation via chunk_text_punctuation, generates
+// chunk 0 with no reference, then uses chunk 0 audio tokens as voice prompt
+// for chunks 1..N (matching the no-ref branch of _generate_chunked in
+// omnivoice.py). Cross-fades chunks, applies remove_silence + final volume
+// adjustment + fade_and_pad. Returns mono float PCM at the codec sample rate
+// (24 kHz). External voice cloning via ref_audio_tokens propagates to every
+// chunk identically (matching the all-have-ref branch upstream).
+// T_override > 0 forces the single-shot path with that exact frame count,
+// bypassing the duration estimator and the chunker. Use 0 for auto.
+// ref_rms < 0 means no external reference -> apply peak/0.5 normalisation.
+// 0 <= ref_rms < 0.1 -> rescale output audio by ref_rms / 0.1 (matches the
+// quiet-ref branch of _post_process_audio). ref_rms >= 0.1 -> no rescale.
+std::vector<float> pipeline_tts_synthesize_long(PipelineTTS *         pt,
+                                                PipelineCodec *       pc,
+                                                const BPETokenizer *  tok,
+                                                const std::string &   text,
+                                                const std::string &   lang,
+                                                const std::string &   instruct,
+                                                int                   T_override,
+                                                float                 chunk_duration_sec,
+                                                float                 chunk_threshold_sec,
+                                                bool                  denoise,
+                                                const MaskgitConfig & mg_cfg,
+                                                const std::string &   ref_text,
+                                                const int32_t *       ext_ref_tokens,
+                                                int                   ext_ref_T,
+                                                float                 ref_rms,
+                                                const char *          dump_dir);

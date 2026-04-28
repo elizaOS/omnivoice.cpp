@@ -128,11 +128,15 @@ static void maskgit_gumbel_inplace(float * x, int n, float temperature, int64_t 
 
 // Run the iterative decoder. Returns flat audio_tokens of size K * T (k slow,
 // t fast). The prompt input_ids buffer is mutated in place during decoding.
+// ctr_lo_inout, when non-NULL, threads the Philox counter across successive
+// MaskGIT calls so a chunked pipeline matches the PyTorch reference (which
+// keeps a single global RNG state across model.generate() boundaries).
 static std::vector<int32_t> maskgit_generate(PipelineTTS *         pt,
                                              PromptTTS *           prompt,
                                              const MaskgitConfig & cfg,
                                              int                   T,
-                                             const char *          dump_dir = nullptr) {
+                                             const char *          dump_dir     = nullptr,
+                                             uint32_t *            ctr_lo_inout = nullptr) {
     const int K       = prompt->K;
     const int B_prime = prompt->B_prime;
     const int S       = prompt->S_max;
@@ -153,7 +157,7 @@ static std::vector<int32_t> maskgit_generate(PipelineTTS *         pt,
     std::vector<float> timesteps = maskgit_timesteps(cfg.num_step, cfg.t_shift);
     std::vector<int>   sched     = maskgit_schedule(cfg.num_step, T * K, timesteps);
 
-    uint32_t ctr_lo = 0;
+    uint32_t ctr_lo = (ctr_lo_inout != nullptr) ? *ctr_lo_inout : 0;
 
     fprintf(
         stderr,
@@ -330,6 +334,10 @@ static std::vector<int32_t> maskgit_generate(PipelineTTS *         pt,
 
         fprintf(stderr, "[MaskGIT-Step] %d/%d demask=%d remaining=%d\n", step + 1, cfg.num_step, k_demask,
                 (int) std::count(tokens.begin(), tokens.end(), mask_id));
+    }
+
+    if (ctr_lo_inout != nullptr) {
+        *ctr_lo_inout = ctr_lo;
     }
 
     return tokens;
