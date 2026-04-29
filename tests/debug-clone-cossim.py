@@ -229,6 +229,74 @@ def install_hooks(model, dump_dir):
         return out
     model.audio_tokenizer._extract_semantic_features = hooked_extract
 
+    # Bisect HuBERT internals. The C++ counterpart marks the same 9 stages as
+    # graph outputs in pipeline_codec_hubert_features_test and dumps them post
+    # compute. Names match exactly so the Python compare loop can pair them.
+    sm = model.audio_tokenizer.semantic_model
+    seen_hub = {"feat": False, "proj_ln": False, "proj": False, "init": False,
+                "l0":   False, "l5":      False, "l7":   False, "l9":   False, "l11":  False}
+
+    def hub_hook_feat(module, inputs, output):
+        # HF feature_extractor returns (B, C=512, T_feat). Squeeze gives
+        # (C, T_feat) which matches the C++ ne=(T, C) tensor whose linear
+        # buffer is laid out slow-first as (C, T). No transpose needed.
+        if seen_hub["feat"]:
+            return
+        arr = output[0].detach().to(torch.float32).cpu().numpy()
+        save_dump(os.path.join(dump_dir, "hubert-feat-extract.bin"), arr)
+        seen_hub["feat"] = True
+    sm.feature_extractor.register_forward_hook(hub_hook_feat)
+
+    # feature_projection internal split : layer_norm first, then projection
+    # Linear. The C++ side dumps the post LN tensor before the Linear, so we
+    # mirror with a forward hook on the LN sub-module.
+    def hub_hook_proj_ln(module, inputs, output):
+        if seen_hub["proj_ln"]:
+            return
+        out_t = output[0] if isinstance(output, tuple) else output
+        arr = out_t[0].detach().to(torch.float32).cpu().numpy()
+        save_dump(os.path.join(dump_dir, "hubert-feat-proj-ln.bin"), arr)
+        seen_hub["proj_ln"] = True
+    sm.feature_projection.layer_norm.register_forward_hook(hub_hook_proj_ln)
+
+    def hub_hook_proj(module, inputs, output):
+        # feature_projection returns (B, T_feat, 768) already T-first.
+        if seen_hub["proj"]:
+            return
+        out_t = output[0] if isinstance(output, tuple) else output
+        arr = out_t[0].detach().to(torch.float32).cpu().numpy()
+        save_dump(os.path.join(dump_dir, "hubert-feat-proj.bin"), arr)
+        seen_hub["proj"] = True
+    sm.feature_projection.register_forward_hook(hub_hook_proj)
+
+    # encoder.layer_norm is the LN that follows pos_conv_embed add. Its output
+    # equals the C++ enc_init output : x + pos_conv(x) -> LN.
+    def hub_hook_init(module, inputs, output):
+        if seen_hub["init"]:
+            return
+        arr = output[0].detach().to(torch.float32).cpu().numpy()
+        save_dump(os.path.join(dump_dir, "hubert-enc-init.bin"), arr)
+        seen_hub["init"] = True
+    sm.encoder.layer_norm.register_forward_hook(hub_hook_init)
+
+    # Mid stack taps : layer 0, 5, 7, 9, 11. Mirror the C++ states[1], [6],
+    # [8], [10], [12] indexing (states[0] is enc-init dumped above). l7 and
+    # l9 give the resolution to localize the explosion seen between l5 and l11.
+    def make_layer_tap(key, fname):
+        def hook(module, inputs, output):
+            if seen_hub[key]:
+                return
+            h = output[0] if isinstance(output, tuple) else output
+            arr = h[0].detach().to(torch.float32).cpu().numpy()
+            save_dump(os.path.join(dump_dir, fname), arr)
+            seen_hub[key] = True
+        return hook
+    sm.encoder.layers[0].register_forward_hook(make_layer_tap("l0",  "hubert-l0.bin"))
+    sm.encoder.layers[5].register_forward_hook(make_layer_tap("l5",  "hubert-l5.bin"))
+    sm.encoder.layers[7].register_forward_hook(make_layer_tap("l7",  "hubert-l7.bin"))
+    sm.encoder.layers[9].register_forward_hook(make_layer_tap("l9",  "hubert-l9.bin"))
+    sm.encoder.layers[11].register_forward_hook(make_layer_tap("l11", "hubert-l11.bin"))
+
     # Bisect the LM forward by dumping per layer hidden states at step 0.
     # The C++ pipeline dumps cond and uncond at layers 0, 6, 13, 20 and the
     # final norm. Mirror that exactly so a per layer max_abs_diff comparison
@@ -421,6 +489,16 @@ def main():
 
     fa, fb = pair("ref-hubert-features.bin")
     print(f"[Cossim] HuBERT-features cossim: {cos(fa, fb):.6f} max_abs_diff: {maxabs(fa, fb):.3e} shape_cpp: {fa.shape} shape_pt: {fb.shape}")
+
+    # HuBERT bisect taps in pipeline order : feat-extract (post 7 conv1d) ->
+    # feat-proj-ln (post LN, pre Linear) -> feat-proj (post 512 -> 768 Linear)
+    # -> enc-init (post pos_conv add + LN) -> l0 -> l5 -> l7 -> l9 -> l11. The
+    # downsample 2x and the 13-state mean that follow are already covered by
+    # HuBERT-features above.
+    for tap in ["hubert-feat-extract", "hubert-feat-proj-ln", "hubert-feat-proj",
+                "hubert-enc-init", "hubert-l0", "hubert-l5", "hubert-l7", "hubert-l9", "hubert-l11"]:
+        ta, tb = pair(tap + ".bin")
+        print(f"[Cossim] {tap} cossim: {cos(ta, tb):.6f} max_abs_diff: {maxabs(ta, tb):.3e} shape_cpp: {ta.shape} shape_pt: {tb.shape}")
 
     ka, kb = pair("ref-audio-codes.bin")
     n_k = min(ka.size, kb.size)

@@ -334,7 +334,8 @@ static int compute_dac_output_length(int n_samples) {
 // chained together by pipeline_codec_encode.
 static std::vector<float> pipeline_codec_hubert_features_test(PipelineCodec * pc,
                                                               const float *   audio_f32,
-                                                              int             n_samples);
+                                                              int             n_samples,
+                                                              const char *    dump_dir);
 static std::vector<float> pipeline_codec_sem_enc_test(PipelineCodec * pc, const float * features_f32, int n_frames);
 static std::vector<float> pipeline_codec_dac_enc_test(PipelineCodec * pc, const float * audio_f32, int n_samples);
 
@@ -365,7 +366,7 @@ std::vector<int32_t> pipeline_codec_encode(PipelineCodec * pc,
     free(resampled);
 
     // Step 2 : full HuBERT features pipeline -> e_semantic_input (768, T_s).
-    std::vector<float> features = pipeline_codec_hubert_features_test(pc, audio_16k_padded.data(), n_padded);
+    std::vector<float> features = pipeline_codec_hubert_features_test(pc, audio_16k_padded.data(), n_padded, dump_dir);
     if (features.empty()) {
         return {};
     }
@@ -653,7 +654,8 @@ static std::vector<float> pipeline_codec_sem_enc_test(PipelineCodec * pc, const 
 // All of this lives inside one graph for a single backend roundtrip.
 static std::vector<float> pipeline_codec_hubert_features_test(PipelineCodec * pc,
                                                               const float *   audio_f32,
-                                                              int             n_samples) {
+                                                              int             n_samples,
+                                                              const char *    dump_dir) {
     if (n_samples <= 0) {
         return {};
     }
@@ -674,9 +676,12 @@ static std::vector<float> pipeline_codec_hubert_features_test(PipelineCodec * pc
     ggml_set_input(audio);
 
     // Feature extraction stack : audio -> conv -> projection -> enc_init.
-    struct ggml_tensor * feat = hubert_feat_build_graph(gctx, &pc->hubert_feat, audio);
-    struct ggml_tensor * proj = hubert_proj_build_graph(gctx, &pc->hubert_proj, feat);
-    struct ggml_tensor * h    = hubert_enc_init_build_graph(gctx, &pc->hubert_enc_init, proj);
+    // The extra out_post_ln tap on the projection lets us tell the LayerNorm
+    // and the 512 -> 768 Linear apart inside hubert-feat-proj.
+    struct ggml_tensor * feat         = hubert_feat_build_graph(gctx, &pc->hubert_feat, audio);
+    struct ggml_tensor * proj_post_ln = NULL;
+    struct ggml_tensor * proj         = hubert_proj_build_graph(gctx, &pc->hubert_proj, feat, &proj_post_ln);
+    struct ggml_tensor * h            = hubert_enc_init_build_graph(gctx, &pc->hubert_enc_init, proj);
 
     // Capture the 13 hidden states fed to the stack mean : (post enc_init,
     // post layer 0, ..., post layer 11). The reference encoder loop snapshots the input
@@ -707,6 +712,22 @@ static std::vector<float> pipeline_codec_hubert_features_test(PipelineCodec * pc
     struct ggml_tensor * features = ggml_cont(gctx, strided);
     ggml_set_output(features);
 
+    // Bisect taps : keep the buffers of the intermediate stages alive past the
+    // memory planner so they can be copied back after compute. Cheap, only 8
+    // [768, T_h] f32 tensors plus feat at [512, T_feat] and proj-ln at
+    // [512, T_feat], total ~13 MB.
+    if (dump_dir) {
+        ggml_set_output(feat);
+        ggml_set_output(proj_post_ln);
+        ggml_set_output(proj);
+        ggml_set_output(states[0]);
+        ggml_set_output(states[1]);
+        ggml_set_output(states[6]);
+        ggml_set_output(states[8]);
+        ggml_set_output(states[10]);
+        ggml_set_output(states[12]);
+    }
+
     struct ggml_cgraph * graph = ggml_new_graph_custom(gctx, n_max_nodes, false);
     ggml_build_forward_expand(graph, features);
 
@@ -724,6 +745,31 @@ static std::vector<float> pipeline_codec_hubert_features_test(PipelineCodec * pc
         ggml_gallocr_free(alloc);
         ggml_free(gctx);
         return {};
+    }
+
+    // Bisect dumps. ne layout is (C, T) on every tap, so we dump as (T, C) which
+    // matches the natural numpy reshape on the linear buffer. Names mirror the
+    // Python hooks installed in the test script.
+    if (dump_dir) {
+        DebugDumper dbg;
+        debug_init(&dbg, dump_dir);
+        auto dump_tap = [&](struct ggml_tensor * t, const char * name) {
+            const int          T   = (int) t->ne[1];
+            const int          C   = (int) t->ne[0];
+            const size_t       nel = (size_t) T * (size_t) C;
+            std::vector<float> buf(nel);
+            ggml_backend_tensor_get(t, buf.data(), 0, nel * sizeof(float));
+            debug_dump_2d(&dbg, name, buf.data(), T, C);
+        };
+        dump_tap(feat, "hubert-feat-extract");
+        dump_tap(proj_post_ln, "hubert-feat-proj-ln");
+        dump_tap(proj, "hubert-feat-proj");
+        dump_tap(states[0], "hubert-enc-init");
+        dump_tap(states[1], "hubert-l0");
+        dump_tap(states[6], "hubert-l5");
+        dump_tap(states[8], "hubert-l7");
+        dump_tap(states[10], "hubert-l9");
+        dump_tap(states[12], "hubert-l11");
     }
 
     const size_t       n = ggml_nelements(features);

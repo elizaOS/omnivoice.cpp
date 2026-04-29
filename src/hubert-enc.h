@@ -244,7 +244,8 @@ static void hubert_proj_free(HubertFeatProjection * p) {
 // once; downstream transformer blocks stay in C-first natively.
 static struct ggml_tensor * hubert_proj_build_graph(struct ggml_context *        ctx,
                                                     const HubertFeatProjection * p,
-                                                    struct ggml_tensor *         x  // [T, 512] f32
+                                                    struct ggml_tensor *         x,  // [T, 512] f32
+                                                    struct ggml_tensor **        out_post_ln = NULL
 ) {
     // (T, C) -> (C, T) so ggml_norm normalizes along ne[0] = C.
     x                       = ggml_cont(ctx, ggml_transpose(ctx, x));
@@ -253,6 +254,12 @@ static struct ggml_tensor * hubert_proj_build_graph(struct ggml_context *       
     struct ggml_tensor * b2 = ggml_reshape_2d(ctx, p->ln_b, HUBERT_PROJ_IN, 1);
     x                       = ggml_mul(ctx, x, w2);
     x                       = ggml_add(ctx, x, b2);
+    // Bisect tap : output of the LN, before the 512 -> 768 Linear. Layout
+    // is (C=512, T) ne which dump_tap will write as numpy (T, 512), matching
+    // the HF feature_projection.layer_norm forward hook.
+    if (out_post_ln) {
+        *out_post_ln = x;
+    }
     // Linear : (in=512, T) @ proj_w (in=512, out=768) -> (out=768, T)
     x                       = ggml_mul_mat(ctx, p->proj_w, x);
     struct ggml_tensor * pb = ggml_reshape_2d(ctx, p->proj_b, HUBERT_PROJ_OUT, 1);
