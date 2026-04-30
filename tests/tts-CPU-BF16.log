@@ -1,0 +1,143 @@
+[Quant] BF16 -> ../models/omnivoice-base-BF16.gguf + ../models/omnivoice-tokenizer-BF16.gguf
+[Input] Prompt: 102 chars: omnivoice.cpp is a minimal C++17 and GGML port of OmniVoice ...
+[Input] Instruct: male, young adult, moderate pitch
+[Input] Language: French
+[Input] Seed: 42
+Loading weights:   0%|          | 0/313 [00:00<?, ?it/s]Loading weights: 100%|██████████| 313/313 [00:00<00:00, 30882.55it/s]
+Loading weights:   0%|          | 0/527 [00:00<?, ?it/s]Loading weights: 100%|██████████| 527/527 [00:00<00:00, 30792.35it/s]
+[CLI] Seed: 42
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 97247 MiB):
+  Device 0: NVIDIA RTX PRO 6000 Blackwell Workstation Edition, compute capability 12.0, VMM: yes, VRAM: 97247 MiB
+load_backend: loaded CUDA backend from /mnt/workspace/omnivoice.cpp/build/libggml-cuda.so
+ggml_vulkan: Found 1 Vulkan devices:
+ggml_vulkan: 0 = NVIDIA RTX PRO 6000 Blackwell Workstation Edition (NVIDIA) | uma: 0 | fp16: 1 | bf16: 0 | warp size: 32 | shared memory: 49152 | int dot: 1 | matrix cores: NV_coopmat2
+load_backend: loaded Vulkan backend from /mnt/workspace/omnivoice.cpp/build/libggml-vulkan.so
+load_backend: loaded CPU backend from /mnt/workspace/omnivoice.cpp/build/libggml-cpu-zen4.so
+[Load] LM backend: CPU (CPU threads: 16)
+[GGUF] ../models/omnivoice-base-BF16.gguf: 312 tensors, data at offset 5339136
+[LM-Load] Loaded: 28L H=1024 FFN=3072 Nh=16 Nkv=8 D=128 theta=1000000 eps=1e-06 | audio: K=8 V=1025 mask_id=1024
+[Qwen3] Attn: Q+K+V fused
+[Qwen3] MLP: gate+up fused
+[WeightCtx] Loaded 312 tensors, 1168.5 MB into backend
+[Load] Flash attention disabled
+[BPE] Loaded from GGUF: 151676 vocab, 151387 merges, eos_id=151643
+[BPE] Registered 7 OmniVoice special tokens (total specials=8)
+[GGUF] ../models/omnivoice-tokenizer-BF16.gguf: 486 tensors, data at offset 43680
+[WeightCtx] Loaded 52 tensors, 11.1 MB into backend
+[DAC] Loaded: 5 blocks, upsample 960x (8*5*4*2*3), 24 kHz mono out, weights 38.7 MB
+[DAC-Enc] Loaded: 5 blocks, downsample 960x (8*5*4*2*3), 24 kHz mono in, weights 98.0 MB
+[Sem-Enc] Loaded: 2 blocks, hidden=768, no temporal downsample, weights 28.1 MB
+[HuBERT-Feat] Loaded: 7 conv layers, cumul stride 320, weights 8.0 MB
+[HuBERT-Proj] Loaded: LN(512) + Linear(512 -> 768), weights 0.8 MB
+[HuBERT-EncInit] Loaded: pos_conv k=128 g=16 + LN(768), weights 9.0 MB
+[HuBERT-Stack] Loaded: 12 layers, hidden=768 heads=12 ffn=3072, weights 162.5 MB
+[PipelineCodec] Loaded codec: sr=24000 hop=960 backend=CPU
+[TTS-Long] Single-shot path: T=163 frames (6.52s), threshold=750 frames
+[Prompt] Built: B'=2 K=8 S=205 N1=12 N2=30 Sref=0 Stgt=163 c_len=205 u_len=163 denoise=0
+[Debug] prompt-cond-ids: [205] first4: 151670.000000 1626.000000 151671.000000 151672.000000
+[Debug] prompt-uncond-ids: [205] first4: 1024.000000 1024.000000 1024.000000 1024.000000
+[TTS] Prompt: B'=2 K=8 S=205 c_len=205 u_len=163
+[MaskGIT] Start: T=163 K=8 S=205 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00
+[Debug] lm-hidden-step0-cond-embed: [205, 1024] first4: -0.032471 -0.045654 -0.006836 0.006775
+[Debug] lm-hidden-step0-cond-l0: [205, 1024] first4: 0.144248 0.027396 -0.176603 -3.208308
+[Debug] lm-hidden-step0-cond-l1: [205, 1024] first4: 0.495967 0.133762 -0.131677 -4.272298
+[Debug] lm-hidden-step0-cond-l2: [205, 1024] first4: 0.458628 0.356845 -0.100340 -4.202172
+[Debug] lm-hidden-step0-cond-l3: [205, 1024] first4: 0.359223 0.436677 0.106131 -3.920373
+[Debug] lm-hidden-step0-cond-l4: [205, 1024] first4: 0.091024 0.634269 0.160284 -3.909296
+[Debug] lm-hidden-step0-cond-l5: [205, 1024] first4: 0.256848 0.620366 0.113132 -3.735570
+[Debug] lm-hidden-step0-cond-l6: [205, 1024] first4: 0.518882 0.511038 -0.046358 -3.383966
+[Debug] lm-hidden-step0-cond-l13: [205, 1024] first4: 1.237693 1.378095 0.334130 -4.866626
+[Debug] lm-hidden-step0-cond-l14: [205, 1024] first4: 1.160963 1.818868 0.307489 -4.480531
+[Debug] lm-hidden-step0-cond-l15: [205, 1024] first4: 0.758368 2.436570 0.464665 -4.813733
+[Debug] lm-hidden-step0-cond-l16: [205, 1024] first4: 0.542896 3.257403 0.654872 -3.899989
+[Debug] lm-hidden-step0-cond-l17: [205, 1024] first4: -0.318488 4.586763 -0.499952 -2.347116
+[Debug] lm-hidden-step0-cond-l18: [205, 1024] first4: 0.113954 5.299395 -1.930625 -1.067457
+[Debug] lm-hidden-step0-cond-l19: [205, 1024] first4: 0.570299 4.951620 0.373695 -1.115290
+[Debug] lm-hidden-step0-cond-l20: [205, 1024] first4: 0.209015 12.120819 -4.532263 0.097885
+[Debug] lm-hidden-step0-cond-l1-norm1: [205, 1024] first4: 0.019016 0.005218 0.018691 0.167223
+[Debug] lm-hidden-step0-cond-l1-attn: [205, 1024] first4: 0.227700 -0.062862 0.416655 -0.600308
+[Debug] lm-hidden-step0-cond-l1-norm2: [205, 1024] first4: 0.184412 -0.024752 -0.154757 -4.959867
+[Debug] lm-hidden-step0-cond-l1-mlp: [205, 1024] first4: 0.124019 0.169228 -0.371729 -0.463683
+[Debug] lm-hidden-step0-cond: [205, 1024] first4: 0.337887 7.714447 42.766014 0.161448
+[Debug] lm-hidden-step0-uncond-embed: [205, 1024] first4: 0.005131 0.004723 0.009892 0.009244
+[Debug] lm-hidden-step0-uncond-l0: [205, 1024] first4: -0.055197 0.060255 0.241465 -2.714498
+[Debug] lm-hidden-step0-uncond-l1: [205, 1024] first4: -0.277818 0.414803 0.243762 -3.154544
+[Debug] lm-hidden-step0-uncond-l2: [205, 1024] first4: -0.421260 0.746879 0.240164 -3.515074
+[Debug] lm-hidden-step0-uncond-l3: [205, 1024] first4: -0.101901 0.853126 0.113168 -3.489035
+[Debug] lm-hidden-step0-uncond-l4: [205, 1024] first4: -0.248966 0.601941 -0.034422 -3.586370
+[Debug] lm-hidden-step0-uncond-l5: [205, 1024] first4: -0.216026 1.169952 0.040448 -4.029304
+[Debug] lm-hidden-step0-uncond-l6: [205, 1024] first4: -0.313292 0.829696 0.014375 -4.756525
+[Debug] lm-hidden-step0-uncond-l13: [205, 1024] first4: 2.461673 1.449154 -0.038051 -12.968000
+[Debug] lm-hidden-step0-uncond-l14: [205, 1024] first4: 2.619532 2.270355 -0.097690 -15.055201
+[Debug] lm-hidden-step0-uncond-l15: [205, 1024] first4: 3.554855 3.304629 0.431582 -19.035654
+[Debug] lm-hidden-step0-uncond-l16: [205, 1024] first4: 4.351203 1.857271 -0.665572 -15.611772
+[Debug] lm-hidden-step0-uncond-l17: [205, 1024] first4: 4.194698 3.175366 -1.628825 -13.149732
+[Debug] lm-hidden-step0-uncond-l18: [205, 1024] first4: 3.055348 3.608431 3.548784 -11.610266
+[Debug] lm-hidden-step0-uncond-l19: [205, 1024] first4: 3.456029 7.594948 9.722183 -7.252934
+[Debug] lm-hidden-step0-uncond-l20: [205, 1024] first4: 6.244316 16.665195 1.627388 -5.183986
+[Debug] lm-hidden-step0-uncond-l1-norm1: [205, 1024] first4: -0.007637 0.012044 -0.026820 0.148488
+[Debug] lm-hidden-step0-uncond-l1-attn: [205, 1024] first4: -0.238448 0.406077 0.343053 -0.052095
+[Debug] lm-hidden-step0-uncond-l1-norm2: [205, 1024] first4: -0.157643 0.352398 -0.408027 -3.901145
+[Debug] lm-hidden-step0-uncond-l1-mlp: [205, 1024] first4: 0.015827 -0.051530 -0.340756 -0.387951
+[Debug] lm-hidden-step0-uncond: [205, 1024] first4: 0.838516 47.193745 128.770279 0.552900
+[Debug] lm-logits-step0-cond: [8, 163, 1025] first4: 17.015171 11.756504 17.836533 17.072147
+[Debug] lm-logits-step0-uncond: [8, 163, 1025] first4: 16.642498 10.925017 16.686977 16.533098
+[Debug] mg-pred-tokens-step0: [8, 163] first4: 976.000000 644.000000 599.000000 679.000000
+[Debug] mg-scores-step0: [8, 163] first4: -1.924093 -1.854103 -2.892933 -2.099803
+[Debug] mg-log-probs-step0: [8, 163, 1025] first4: -9.584476 -13.925516 -7.209351 -9.194748
+[MaskGIT-Step] 1/32 demask=5 remaining=1299
+[MaskGIT-Step] 2/32 demask=5 remaining=1294
+[MaskGIT-Step] 3/32 demask=5 remaining=1289
+[MaskGIT-Step] 4/32 demask=6 remaining=1283
+[MaskGIT-Step] 5/32 demask=6 remaining=1277
+[MaskGIT-Step] 6/32 demask=6 remaining=1271
+[MaskGIT-Step] 7/32 demask=7 remaining=1264
+[MaskGIT-Step] 8/32 demask=7 remaining=1257
+[MaskGIT-Step] 9/32 demask=8 remaining=1249
+[MaskGIT-Step] 10/32 demask=8 remaining=1241
+[MaskGIT-Step] 11/32 demask=9 remaining=1232
+[MaskGIT-Step] 12/32 demask=9 remaining=1223
+[MaskGIT-Step] 13/32 demask=10 remaining=1213
+[MaskGIT-Step] 14/32 demask=11 remaining=1202
+[MaskGIT-Step] 15/32 demask=12 remaining=1190
+[MaskGIT-Step] 16/32 demask=13 remaining=1177
+[MaskGIT-Step] 17/32 demask=15 remaining=1162
+[MaskGIT-Step] 18/32 demask=16 remaining=1146
+[MaskGIT-Step] 19/32 demask=18 remaining=1128
+[MaskGIT-Step] 20/32 demask=21 remaining=1107
+[MaskGIT-Step] 21/32 demask=23 remaining=1084
+[MaskGIT-Step] 22/32 demask=27 remaining=1057
+[MaskGIT-Step] 23/32 demask=31 remaining=1026
+[MaskGIT-Step] 24/32 demask=36 remaining=990
+[MaskGIT-Step] 25/32 demask=43 remaining=947
+[MaskGIT-Step] 26/32 demask=52 remaining=895
+[MaskGIT-Step] 27/32 demask=64 remaining=831
+[MaskGIT-Step] 28/32 demask=80 remaining=751
+[MaskGIT-Step] 29/32 demask=105 remaining=646
+[MaskGIT-Step] 30/32 demask=142 remaining=504
+[MaskGIT-Step] 31/32 demask=204 remaining=300
+[MaskGIT-Step] 32/32 demask=300 remaining=0
+[MaskGIT] Total LM forward: 8568.03 ms across 32 steps (avg 267.75 ms/step)
+[Debug] mg-tokens: [8, 163] first4: 947.000000 453.000000 524.000000 878.000000
+[TTS] Decode: K=8 T=163 expected_samples=156480
+[Debug] output-audio: [156480] first4: 0.001598 0.000697 0.000791 0.001288
+[TTS-Long] Post-proc: 156480 -> 161280 samples (6.72s at 24000 Hz, ref_rms=-1.0000)
+[WAV] Wrote cpp/tts-cpp.wav: 161280 samples, 24000 Hz, mono F32
+[OmniVoice-TTS] TTS: wrote cpp/tts-cpp.wav (161280 samples @ 24000 Hz, 6.72 s)
+[Python] Audio: 161280 samples 6.72s -> python/tts-python.wav
+[GGML] Cmd: ../build/omnivoice-tts --model ../models/omnivoice-base-BF16.gguf --codec ../models/omnivoice-tokenizer-BF16.gguf --seed 42 --instruct male, young adult, moderate pitch --lang French --format wav32 --dump cpp --no-fa -o cpp/tts-cpp.wav
+[GGML] Audio: 161280 samples 24000 Hz 6.72s -> cpp/tts-cpp.wav
+[Cossim] PromptIDs cond exact: 100.00% uncond exact: 100.00%
+[Cossim] Embed cond cos: 0.999999 max: 1.9504e-03 mean: 7.9007e-05 uncond cos: 0.999999 max: 1.4691e-03 mean: 7.8259e-05
+[Cossim] L0 cond cos: 1.000000 max: 2.6716e-02 mean: 4.5743e-04 uncond cos: 0.999999 max: 3.6633e-02 mean: 6.1664e-04
+[Cossim] L6 cond cos: 0.999999 max: 3.3383e-01 mean: 1.1725e-03 uncond cos: 0.999998 max: 7.2889e-02 mean: 1.9149e-03
+[Cossim] L13 cond cos: 0.999999 max: 4.1704e-01 mean: 2.8949e-03 uncond cos: 0.999999 max: 1.7889e-01 mean: 3.3030e-03
+[Cossim] L20 cond cos: 0.999999 max: 3.2730e+00 mean: 1.9048e-02 uncond cos: 0.999999 max: 6.7969e-01 mean: 1.3329e-02
+[Cossim] Final cond cos: 1.000000 max: 9.7107e-01 mean: 1.3016e-03 uncond cos: 1.000000 max: 2.5932e-01 mean: 1.2224e-03
+[Cossim] Logits cond cos: 1.000000 max: 3.3614e-01 mean: 4.2539e-02 uncond cos: 1.000000 max: 3.8161e-01 mean: 4.3142e-02
+[Cossim] Step0Tokens exact: 86.20% diffs: 180
+[Cossim] Step0Scores cos: 0.999930 max_abs_diff: 0.195261 mean_abs_diff: 0.036226
+[Cossim] Step0LogProbs cos: 0.999984 max_abs_diff: 0.633476 mean_abs_diff: 0.037300
+[Cossim] Tokens: 0.834882 exact: 27.53%
+[Cossim] Audio: 0.594457
+[Cossim] WAV stft_cos: 0.941892 samples: 161280
