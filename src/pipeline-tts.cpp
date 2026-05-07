@@ -15,6 +15,7 @@
 #include "ggml-backend.h"
 #include "ggml.h"
 #include "maskgit-tts.h"
+#include "ov-error.h"
 #include "pipeline-codec.h"
 #include "prompt-tts.h"
 #include "text-chunker.h"
@@ -1063,6 +1064,7 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
                                   const ov_tts_params * params,
                                   ov_audio *            out) {
     if (!params || !out) {
+        ov_set_error("pipeline_tts_synthesize : params or out is NULL");
         return OV_STATUS_INVALID_PARAMS;
     }
 
@@ -1076,6 +1078,7 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
     bool has_raw    = (params->ref_audio_24k != nullptr) && (params->ref_n_samples > 0);
     bool has_tokens = (params->ref_audio_tokens != nullptr) && (params->ref_T > 0);
     if (has_raw && has_tokens) {
+        ov_set_error("ov_synthesize : ref_audio_24k and ref_audio_tokens are mutually exclusive");
         fprintf(stderr, "[TTS] ERROR: ref_audio_24k and ref_audio_tokens are mutually exclusive\n");
         return OV_STATUS_INVALID_PARAMS;
     }
@@ -1092,6 +1095,8 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
     // -> Chinese, otherwise English.
     std::string instruct;
     if (!pipeline_tts_resolve_instruct(vd, text, raw_instruct, &instruct)) {
+        ov_set_error("ov_synthesize : instruct '%s' could not be resolved against the voice-design vocabulary",
+                     raw_instruct.c_str());
         return OV_STATUS_INSTRUCT_INVALID;
     }
 
@@ -1132,9 +1137,11 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
     }
 
     if (cc.triggered) {
+        ov_set_error("ov_synthesize : cancelled by ov_cancel_cb");
         return OV_STATUS_CANCELLED;
     }
     if (audio.empty()) {
+        ov_set_error("ov_synthesize : generation produced no audio (see [TTS] log lines for the failing stage)");
         return OV_STATUS_GENERATE_FAILED;
     }
 
@@ -1144,6 +1151,7 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
     size_t  bytes   = audio.size() * sizeof(float);
     float * samples = (float *) malloc(bytes);
     if (!samples) {
+        ov_set_error("ov_synthesize : malloc failed for %zu bytes of output audio", bytes);
         fprintf(stderr, "[TTS] ERROR: malloc failed for %zu bytes of output audio\n", bytes);
         return OV_STATUS_OOM;
     }

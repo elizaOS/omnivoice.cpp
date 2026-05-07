@@ -55,12 +55,23 @@ int main(void) {
      * NULL on missing model_path, ov_synthesize / ov_duration_sec_to_tokens
      * fail on NULL handle, ov_free is safe on NULL. None of these load a
      * model, but the linker must resolve every name to satisfy the call. */
-    struct OmniVoice * dummy = ov_init(NULL);
+    struct ov_context * dummy = ov_init(NULL);
     if (dummy != NULL) {
         fprintf(stderr, "ABI probe : ov_init(NULL) was supposed to return NULL\n");
         ov_free(dummy);
         return 2;
     }
+
+    /* ov_init(NULL) just failed -> ov_last_error() must point to a
+     * non-empty thread-local string. Pointer is always valid (c_str on
+     * an empty std::string still gives a NUL byte), so we only need to
+     * check the first byte to confirm an error was actually recorded. */
+    const char * err = ov_last_error();
+    if (err == NULL || err[0] == '\0') {
+        fprintf(stderr, "ABI probe : ov_last_error() empty after a known failure\n");
+        return 5;
+    }
+    printf("omnivoice ABI probe : ov_last_error reads '%s'\n", err);
 
     enum ov_status rc = ov_synthesize(NULL, &params, &audio);
     if (rc != OV_STATUS_INVALID_PARAMS) {

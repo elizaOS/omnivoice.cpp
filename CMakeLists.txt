@@ -170,7 +170,11 @@ set_target_properties(test-abi-c PROPERTIES
     C_STANDARD_REQUIRED ON
     C_EXTENSIONS OFF
 )
-target_compile_options(test-abi-c PRIVATE -Wall -Werror -pedantic)
+if(MSVC)
+    target_compile_options(test-abi-c PRIVATE /W4 /WX)
+else()
+    target_compile_options(test-abi-c PRIVATE -Wall -Werror -pedantic)
+endif()
 target_include_directories(test-abi-c PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}

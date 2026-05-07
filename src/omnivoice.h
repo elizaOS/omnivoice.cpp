@@ -6,7 +6,7 @@
 // Style follows whisper.h / llama.h : extern "C" linkage on every entry,
 // POD structs only, const char * UTF-8 strings, ov_status enum returns.
 //
-// The opaque OmniVoice handle aggregates every module the synthesis path
+// The opaque ov_context handle aggregates every module the synthesis path
 // needs (LM weights, audio tokenizer codec, BPE tokenizer, voice-design
 // vocabulary, GGML backend pair). One init, one free, one synthesize call
 // covers the full TTS path. The lower-level pipeline_*_load /
@@ -21,12 +21,17 @@
 extern "C" {
 #endif
 
-// Symbol visibility. Linux/macOS use GCC visibility ; Windows use
-// dllexport at build time and dllimport at consume time, gated by
-// OMNIVOICE_BUILD which is set on the library target only. Empty when
-// neither path applies, harmless on static builds.
+// Symbol visibility. Three Windows cases : building the SHARED target
+// (OMNIVOICE_BUILD set, dllexport), consuming the SHARED target from
+// outside (nothing set, dllimport), consuming the STATIC archive
+// (OMNIVOICE_STATIC set by the static target's INTERFACE definitions,
+// empty so the linker resolves the symbol directly without dllimport).
+// On GCC/Clang the default-visibility attribute is harmless on static
+// builds and required on shared builds.
 #if defined(_WIN32) || defined(__CYGWIN__)
-#    ifdef OMNIVOICE_BUILD
+#    if defined(OMNIVOICE_STATIC)
+#        define OV_API
+#    elif defined(OMNIVOICE_BUILD)
 #        define OV_API __declspec(dllexport)
 #    else
 #        define OV_API __declspec(dllimport)
@@ -61,6 +66,16 @@ enum ov_status {
     OV_STATUS_CANCELLED        = -5,
 };
 
+// Returns the last error message produced on the calling thread by any
+// ov_* entry, as a NUL-terminated UTF-8 string. errno-style semantics : the
+// pointer is only meaningful right after a failure (ov_init returning NULL,
+// or any ov_* entry returning a negative ov_status) ; calling it after a
+// successful entry yields the previous message or an empty string. Storage
+// is thread-local so two threads running ov_synthesize concurrently never
+// race on each other's diagnostics. The pointer stays valid until the next
+// failing ov_* entry on the same thread.
+OV_API const char * ov_last_error(void);
+
 // Output audio buffer. Plain POD : the samples pointer is malloc-allocated
 // by ov_synthesize, owned by the struct, released by ov_audio_free. Do not
 // free samples directly nor reassign without freeing first. Zero-initialise
@@ -77,7 +92,7 @@ struct ov_audio {
 OV_API void ov_audio_free(struct ov_audio * a);
 
 // Opaque handle. Definition lives in omnivoice.cpp. Use ov_init / ov_free.
-struct OmniVoice;
+struct ov_context;
 
 // Initialisation parameters. model_path is required (the LM GGUF). When
 // codec_path is NULL the codec module is skipped and ov_synthesize fails
@@ -98,11 +113,11 @@ OV_API void ov_init_default_params(struct ov_init_params * p);
 // Allocate every module described by params. Returns NULL on any failure
 // after releasing whatever it has allocated so far. The returned handle
 // owns its GGML backend pair and must be released with ov_free.
-OV_API struct OmniVoice * ov_init(const struct ov_init_params * params);
+OV_API struct ov_context * ov_init(const struct ov_init_params * params);
 
 // Release every module owned by the handle and free the handle itself.
 // Safe on NULL.
-OV_API void ov_free(struct OmniVoice * ov);
+OV_API void ov_free(struct ov_context * ov);
 
 // Cooperative cancellation callback. Returns true to request the
 // synthesis to abort. Polled between chunks of long-form output, so the
@@ -178,12 +193,12 @@ OV_API void ov_tts_default_params(struct ov_tts_params * p);
 // mono float PCM at 24 kHz. Returns OV_STATUS_OK on success ; on any
 // failure returns a negative ov_status describing the cause and leaves
 // `out` empty. Requires a codec-loaded handle.
-OV_API enum ov_status ov_synthesize(struct OmniVoice * ov, const struct ov_tts_params * params, struct ov_audio * out);
+OV_API enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params * params, struct ov_audio * out);
 
 // Convert a duration in seconds to a frame count using the bundled codec
 // frame rate (sample_rate / hop_length). Clamps to a minimum of one
 // frame. Requires a codec-loaded handle.
-OV_API int ov_duration_sec_to_tokens(const struct OmniVoice * ov, float duration_sec);
+OV_API int ov_duration_sec_to_tokens(const struct ov_context * ov, float duration_sec);
 
 #ifdef __cplusplus
 }

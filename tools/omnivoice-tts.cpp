@@ -209,7 +209,7 @@ static int run_tts_via_ov(const char * model_path,
     iparams.use_fa     = use_fa;
     iparams.clamp_fp16 = clamp_fp16;
 
-    OmniVoice * ov = ov_init(&iparams);
+    ov_context * ov = ov_init(&iparams);
     if (!ov) {
         return 1;
     }
