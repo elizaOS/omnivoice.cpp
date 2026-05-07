@@ -86,23 +86,21 @@ macro(link_ggml_backends target)
     add_dependencies(${target} version)
 endmacro()
 
-# Core library shared between binaries. STATIC by default, SHARED when
-# BUILD_SHARED_LIBS=ON is passed at configure time. The OMNIVOICE_BUILD
-# define enables OV_API as dllexport on Windows / default-visibility on
-# GCC ; downstream targets that include omnivoice.h see dllimport on
-# Windows / default empty on GCC, both correct.
-# Core library shared between binaries. Always STATIC : the bundled CLI
-# tools include pipeline-tts.h / pipeline-codec.h / backend.h directly
-# for the debug paths (--llm-test, --maskgit-test) and need every
-# pipeline_* / backend_* symbol resolved without going through the public
-# ABI. The shared library for ABI consumers is a separate, opt-in target
-# below.
+# Core library always STATIC : the bundled CLI tools include
+# pipeline-tts.h / pipeline-codec.h / backend.h directly for the debug
+# paths (--llm-test, --maskgit-test) and need every pipeline_* / backend_*
+# symbol resolved without going through the public ABI. OMNIVOICE_STATIC
+# is propagated PUBLIC : the lib's own .cpp files see it (so OV_API
+# resolves to empty when compiling omnivoice.cpp on Windows), and every
+# consumer that links omnivoice-core inherits it too (same effect on
+# their side, no spurious dllimport on a static archive). The shared
+# library for ABI consumers is a separate, opt-in target below.
 add_library(omnivoice-core STATIC
     src/omnivoice.cpp
     src/pipeline-codec.cpp
     src/pipeline-tts.cpp
 )
-target_compile_definitions(omnivoice-core PRIVATE OMNIVOICE_BUILD)
+target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)
 link_ggml_backends(omnivoice-core)
 
 # Public shared library for ABI consumers (Python ctypes, Rust bindgen,
