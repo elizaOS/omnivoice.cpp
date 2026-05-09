@@ -23,10 +23,11 @@ by GGML. C++17 port of OmniVoice (k2-fsa/OmniVoice). 646 languages,
 ```
 git clone --recurse-submodules https://github.com/ServeurpersoCom/omnivoice.cpp.git
 cd omnivoice.cpp
-./buildcuda.sh        # NVIDIA GPU
-./buildvulkan.sh      # AMD/Intel GPU (Vulkan)
-./buildcpu.sh         # CPU only
-./buildall.sh         # all backends, runtime DL loading
+./buildcuda.sh                   # NVIDIA GPU
+./buildvulkan.sh                 # AMD/Intel GPU (Vulkan)
+./buildcpu.sh                    # CPU only
+./buildall.sh                    # all backends, runtime DL loading
+NVCC_CCBIN=g++-13 ./buildcuda.sh # rolling release distros (Arch w/ GCC 16, etc.)
 ```
 
 ## Model conversion
