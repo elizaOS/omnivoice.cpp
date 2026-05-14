@@ -290,8 +290,8 @@ static enum ggml_type gf_get_type(const GGUFModel & gf, const std::string & name
 
 // Load a Conv1d weight onto an F16 backend tensor regardless of the source
 // dtype. Mandatory on ARM aarch64: the CPU im2col op asserts src0 is F16,
-// while x86 silently accepts BF16 / F32. F16 source memcpy passes through ;
-// F32 / BF16 widen ; Q8_0 / Q4_K / Q5_K / Q6_K dequantize via type traits.
+// while x86 silently accepts BF16 / F32. F16 source memcpy passes through;
+// F32 / BF16 widen; Q8_0 / Q4_K / Q5_K / Q6_K dequantize via type traits.
 // The destination tensor must be allocated as GGML_TYPE_F16.
 static void gf_load_conv_f16(struct ggml_tensor * dst, const GGUFModel & gf, const std::string & name) {
     struct ggml_tensor * src = ggml_get_tensor(gf.meta, name.c_str());

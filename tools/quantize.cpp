@@ -102,7 +102,7 @@ static bool is_embed(const char * name) {
 // Sensitive tensors that MUST stay in full precision :
 //   quantizer.quantizers.*  RVQ codebooks, project_in / project_out
 //                           nearest-neighbor lookup is sensitive to per-row
-//                           quantization noise ; even BF16 destroys the
+//                           quantization noise; even BF16 destroys the
 //                           mantissa enough to mis-select codes and break
 //                           the voice cloning pipeline.
 //   fc.weight / fc2.weight  Linear projections wrapping the RVQ stack,
@@ -136,7 +136,7 @@ static bool should_quantize(const char * name, int n_dims, const char * arch) {
     }
     // RVQ codebooks and surrounding linear projections: nearest-neighbor
     // lookup is sensitive to per-row quantization noise. Q8_0 / K-quants
-    // break ref audio encoding and tank voice cloning ; BF16 already loses
+    // break ref audio encoding and tank voice cloning; BF16 already loses
     // enough mantissa to drift codes. Keep them at F32 in every variant.
     if (strstr(name, "quantizer.quantizers")) {
         return false;

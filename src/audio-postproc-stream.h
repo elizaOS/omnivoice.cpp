@@ -11,7 +11,7 @@
 // Order in the pipeline matches _post_process_audio in omnivoice.py :
 //   1. cross_fade_chunks (concat with fade out + silence + fade in)
 //   2. remove_silence (mid silence drop, edge trim)
-//   3. volume scale (ref_rms branch only ; voice design skips here)
+//   3. volume scale (ref_rms branch only; voice design skips here)
 //   4. fade_and_pad (fade in + fade out + leading and trailing silence pad)
 
 #include "audio-postproc.h"
@@ -191,7 +191,7 @@ struct silence_remover_stream {
         append(samples, n);
 
         // Lead trim phase. Scan chunks of chunk_n until the first non silent
-        // is found ; until then no emission happens.
+        // is found; until then no emission happens.
         if (!lead_done) {
             int trim    = 0;
             int seg_len = (int) buf_s.size();
@@ -247,7 +247,7 @@ struct silence_remover_stream {
 
     // Closes the active silent group [s, e] following the pydub pairwise
     // midpoint dedup rule: if the gap is at least 2*keep_n, drop the middle
-    // and keep keep_n on each side ; otherwise keep all samples but split the
+    // and keep keep_n on each side; otherwise keep all samples but split the
     // overlap at (s + e) / 2 to avoid duplicating samples in the concat.
     template <class Emit> bool close_silent_group(Emit emit) {
         size_t s = silent_grp.front();

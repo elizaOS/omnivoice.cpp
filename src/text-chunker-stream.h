@@ -27,7 +27,7 @@ struct text_chunker_stream {
     int         chunk_len;
     int         min_chunk_len;
     int         n_seen;   // number of chunks observed in the offline
-                          // re-parse so far ; index of the next chunk
+                          // re-parse so far; index of the next chunk
                           // to enter the look ahead pipeline.
     bool        has_pending;
     std::string pending;  // chunk waiting in the look ahead slot.
@@ -44,7 +44,7 @@ struct text_chunker_stream {
     // Append bytes, rerun the offline chunker on the full buffer, advance
     // the look ahead pipeline. Emits chunks that are no longer at risk of
     // a fold. The very last chunk in the offline result is always kept
-    // back since a future sentence might still extend it ; the second to
+    // back since a future sentence might still extend it; the second to
     // last is also kept back so the fold rule has a chance to fire.
     std::vector<std::string> push_bytes(const char * data, size_t n) {
         if (n > 0) {

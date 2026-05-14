@@ -9,7 +9,7 @@
 //
 // Storage is thread_local so concurrent ov_synthesize calls on different
 // threads never race on each other's messages. The setter is variadic with
-// printf semantics ; messages longer than the internal buffer are
+// printf semantics; messages longer than the internal buffer are
 // truncated, never split. Passing NULL as fmt clears the slot.
 //
 // ov_throw is the load-path counterpart: functions deep inside the GGUF
@@ -51,7 +51,7 @@ void ov_set_error_v(const char * fmt, va_list ap);
 // ov_log_cb. Defaults to stderr (with a trailing newline) when no
 // callback is set, so existing fprintf-style call sites can migrate
 // one at a time without changing user-visible behaviour. printf
-// semantics ; messages longer than the internal buffer are truncated.
+// semantics; messages longer than the internal buffer are truncated.
 void ov_log(enum ov_log_level level, const char * fmt, ...)
 #if defined(__GNUC__) || defined(__clang__)
     __attribute__((format(printf, 2, 3)))

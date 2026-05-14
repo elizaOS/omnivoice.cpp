@@ -94,7 +94,7 @@ static int utf8_codepoint(const char * s, int * advance) {
     }
     // invalid lead byte: advance one and return the raw byte to avoid an
     // infinite loop. The Python tokenizer never reaches this path since Python
-    // str guarantees valid UTF 8 ; in C++ the std::string input has no such
+    // str guarantees valid UTF 8; in C++ the std::string input has no such
     // guarantee, so this branch handles malformed input defensively.
     *advance = 1;
     return c;

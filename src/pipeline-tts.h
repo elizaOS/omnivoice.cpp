@@ -160,7 +160,7 @@ int pipeline_tts_duration_sec_to_tokens(const PipelineCodec * pc, float duration
 // Public TTS synthesis entry. Resolves the instruct string against vd, picks
 // between the single-shot, chunked auto-voice and voice-cloning paths from
 // the params struct, and fills `out` with mono float PCM at the codec sample
-// rate (24 kHz). Returns OV_STATUS_OK on success ; on failure returns a
+// rate (24 kHz). Returns OV_STATUS_OK on success; on failure returns a
 // negative ov_status describing the cause and leaves out empty. The whole
 // pipeline mirrors _post_process_audio in omnivoice.py: when no reference
 // audio is provided the output is peak/0.5 normalised, when a reference is
@@ -168,7 +168,7 @@ int pipeline_tts_duration_sec_to_tokens(const PipelineCodec * pc, float duration
 // back to reference loudness.
 //
 // The ov_tts_params struct, the ov_audio struct, the ov_status enum and the
-// ov_audio_free entry are declared in omnivoice.h ; this entry consumes them
+// ov_audio_free entry are declared in omnivoice.h; this entry consumes them
 // directly.
 ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
                                   PipelineCodec *       pc,

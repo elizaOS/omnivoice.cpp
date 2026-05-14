@@ -1,6 +1,6 @@
 #pragma once
 // utf8.h: portable UTF-8 boundary for Windows. Inside the project everything
-// is UTF-8 ; this header bridges to the Windows-native UTF-16 APIs at the
+// is UTF-8; this header bridges to the Windows-native UTF-16 APIs at the
 // three places where the OS forces a recode: argv (CRT decodes from CP_ACP),
 // fopen (CRT does too), and any direct Win32 *A call (CreateFileA etc.).
 // POSIX is UTF-8 by convention and every helper degrades to a passthrough.
