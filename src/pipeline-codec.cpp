@@ -29,11 +29,43 @@
 #include <cstdlib>
 #include <cstring>
 
+static bool codec_backend_is_metal(ggml_backend_t backend) {
+    const char * name = backend ? ggml_backend_name(backend) : "";
+    return name && (std::strncmp(name, "MTL", 3) == 0 || std::strstr(name, "Metal") != nullptr);
+}
+
+static bool codec_backend_env_is(const char * value) {
+    const char * env = std::getenv("ELIZA_OMNIVOICE_CODEC_BACKEND");
+    return env && std::strcmp(env, value) == 0;
+}
+
+static BackendPair codec_backend_pair(BackendPair bp) {
+    if (!bp.cpu_backend || bp.backend == bp.cpu_backend) {
+        return bp;
+    }
+    if (codec_backend_env_is("gpu") || codec_backend_env_is("metal")) {
+        return bp;
+    }
+    if (codec_backend_env_is("cpu") || codec_backend_is_metal(bp.backend)) {
+        BackendPair cpu_bp = {};
+        cpu_bp.backend = bp.cpu_backend;
+        cpu_bp.cpu_backend = bp.cpu_backend;
+        cpu_bp.has_gpu = false;
+        ov_log(OV_LOG_INFO,
+               "[PipelineCodec] using CPU codec backend while LM backend remains %s%s",
+               ggml_backend_name(bp.backend),
+               codec_backend_is_metal(bp.backend) ? " (Metal DAC decode fallback)" : "");
+        return cpu_bp;
+    }
+    return bp;
+}
+
 bool pipeline_codec_load(PipelineCodec * pc, const char * gguf_path, BackendPair bp) {
+    BackendPair codec_bp = codec_backend_pair(bp);
     *pc                    = {};
-    pc->bp                 = bp;
-    pc->backend            = bp.backend;
-    ggml_backend_t backend = bp.backend;
+    pc->bp                 = codec_bp;
+    pc->backend            = codec_bp.backend;
+    ggml_backend_t backend = codec_bp.backend;
 
     if (!gf_load(&pc->gguf, gguf_path)) {
         return false;
@@ -183,7 +215,7 @@ bool pipeline_codec_load(PipelineCodec * pc, const char * gguf_path, BackendPair
     // Scheduler: routes ops the GPU backend cannot run (e.g. K-quant
     // get_rows on CUDA) to the CPU backend. 4096 nodes covers HuBERT 12L
     // + DAC encoder + DAC decoder graphs.
-    pc->sched = backend_sched_new(bp, 4096);
+    pc->sched = backend_sched_new(codec_bp, 4096);
     if (!pc->sched) {
         pipeline_codec_free(pc);
         return false;
