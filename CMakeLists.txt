@@ -49,6 +49,41 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     endif()
 endif()
 
+# Eliza patch — runtime opt-out for the OpenVINO ggml backend.
+#
+# The Eliza local-inference dispatcher annotates Eliza-1 text tiers with
+# `runtime.optimizations.unsupportedKernels: ["openvino"]` (see
+# packages/shared/src/local-inference/catalog.ts). At spawn time it sets
+# GGML_OPENVINO_DISABLE=1 on the child env (see
+# plugins/plugin-local-inference/src/services/dflash-server.ts ::
+# applyUnsupportedKernelEnv) so the GGML OpenVINO backend reports zero
+# devices for THIS process and stays out of layer placement.
+#
+# We can't fork the ggml submodule (it tracks ServeurpersoCom/ggml), so we
+# patch the device-count function during cmake configure. The patch is
+# idempotent — it skips when the sentinel marker is already present, so
+# repeated configures (and CI rebuilds) are no-ops after the first run.
+# The OpenVINO backend stays registered for builds where any other
+# process (e.g. the OpenVINO Whisper ASR worker) wants it; the env is
+# per-process.
+set(_eliza_openvino_src "${CMAKE_CURRENT_SOURCE_DIR}/ggml/src/ggml-openvino/ggml-openvino.cpp")
+if(EXISTS "${_eliza_openvino_src}")
+    file(READ "${_eliza_openvino_src}" _eliza_openvino_contents)
+    if(NOT _eliza_openvino_contents MATCHES "ELIZA_GGML_OPENVINO_DISABLE_HOOK")
+        string(REPLACE
+            "int ggml_backend_openvino_get_device_count() {\n    return 1;\n}"
+            "int ggml_backend_openvino_get_device_count() {\n    // ELIZA_GGML_OPENVINO_DISABLE_HOOK — see omnivoice.cpp/CMakeLists.txt\n    const char * _eliza_disable = getenv(\"GGML_OPENVINO_DISABLE\");\n    if (_eliza_disable != nullptr && _eliza_disable[0] != '\\0' && _eliza_disable[0] != '0') {\n        return 0;\n    }\n    return 1;\n}"
+            _eliza_openvino_patched
+            "${_eliza_openvino_contents}")
+        if(_eliza_openvino_patched STREQUAL _eliza_openvino_contents)
+            message(WARNING "[eliza] ggml_backend_openvino_get_device_count() body not found — GGML_OPENVINO_DISABLE hook NOT applied. The upstream ggml-openvino.cpp may have shifted; refresh the patch in omnivoice.cpp/CMakeLists.txt.")
+        else()
+            file(WRITE "${_eliza_openvino_src}" "${_eliza_openvino_patched}")
+            message(STATUS "[eliza] Patched ggml_backend_openvino_get_device_count() with GGML_OPENVINO_DISABLE hook.")
+        endif()
+    endif()
+endif()
+
 # ggml as subdirectory, inherits GGML_CUDA, GGML_METAL, etc. from cmake flags
 add_subdirectory(ggml)
 
