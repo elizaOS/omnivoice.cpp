@@ -40,7 +40,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 add_compile_definitions(GGML_MAX_NAME=128)
 
 # Harden: mark fread/fwrite/etc with warn_unused_result on all platforms
-if(NOT MSVC)
+# SYCL excluded: _FORTIFY_SOURCE swaps memcpy for __memcpy_chk, unresolved in device code
+if(NOT MSVC AND NOT GGML_SYCL)
     add_compile_definitions(_FORTIFY_SOURCE=2)
 endif()
 
@@ -78,7 +79,7 @@ macro(link_ggml_backends target)
     if(TARGET ggml-base)
         target_link_libraries(${target} PRIVATE ggml-base)
     endif()
-    foreach(backend cpu blas cuda metal vulkan)
+    foreach(backend cpu blas cuda metal vulkan sycl)
         if(TARGET ggml-${backend})
             get_target_property(CURRENT_BACKEND_TYPE ggml-${backend} TYPE)
             if (CURRENT_BACKEND_TYPE STREQUAL "MODULE_LIBRARY")
@@ -89,6 +90,11 @@ macro(link_ggml_backends target)
             target_link_libraries(${target} PRIVATE ggml-${backend})
         endif()
     endforeach()
+
+    # SYCL links its runtime PRIVATE, consumers need -fsycl to resolve libsycl.so
+    if(TARGET ggml-sycl AND GGML_SYCL)
+        target_link_options(${target} PRIVATE -fsycl)
+    endif()
     add_dependencies(${target} version)
 endmacro()
 
