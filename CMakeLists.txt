@@ -55,7 +55,7 @@ endif()
 # `runtime.optimizations.unsupportedKernels: ["openvino"]` (see
 # packages/shared/src/local-inference/catalog.ts). At spawn time it sets
 # GGML_OPENVINO_DISABLE=1 on the child env (see
-# plugins/plugin-local-inference/src/services/dflash-server.ts ::
+# plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts ::
 # applyUnsupportedKernelEnv) so the GGML OpenVINO backend reports zero
 # devices for THIS process and stays out of layer placement.
 #
