@@ -86,7 +86,7 @@ void pipeline_tts_free(PipelineTTS * pt) {
     }
     wctx_free(&pt->wctx);
     // Idempotent: gf_close NULL-checks every handle and zeroes the struct.
-    // The success path already closed the mmap mid-load ; this call is a
+    // The success path already closed the mmap mid-load; this call is a
     // no-op there. The throw path leaves it open and this call releases it.
     gf_close(&pt->gguf);
     *pt = {};
@@ -641,7 +641,7 @@ std::vector<int32_t> pipeline_tts_generate(PipelineTTS *         pt,
 // caller-provided poll function (or NULL when cancellation is disabled), ud
 // the user pointer it gets called with, and triggered an out flag set the
 // first time cb returns true. The helpers return an empty vector on cancel,
-// just like on any other failure ; the public entry inspects triggered to
+// just like on any other failure; the public entry inspects triggered to
 // distinguish OV_STATUS_CANCELLED from OV_STATUS_GENERATE_FAILED.
 struct tts_cancel {
     bool (*cb)(void * ud);
@@ -933,7 +933,7 @@ static std::vector<float> tts_synthesize_long_internal(PipelineTTS *         pt,
 // Same orchestration as tts_synthesize_long_internal up to chunk decoding,
 // then drives the audio through a streaming pipeline (cross fade, silence
 // remove, fade and pad) and emits via on_chunk. Voice cloning applies the
-// ref_rms scale per chunk after silence remove ; voice design (ref_rms < 0)
+// ref_rms scale per chunk after silence remove; voice design (ref_rms < 0)
 // skips peak / 0.5 normalisation since the global peak is unknowable in
 // streaming, leaving output 6 to 12 dB below the buffered path.
 // Returns OV_STATUS_OK on success, _CANCELLED if cc fires or on_chunk
@@ -965,7 +965,7 @@ static ov_status tts_synthesize_long_stream_internal(PipelineTTS *         pt,
     const int frame_rate = sr / hop;
 
     // Volume scale resolved up front: voice cloning applies ref_rms / 0.1
-    // when the reference is quiet, no op when it is loud ; voice design
+    // when the reference is quiet, no op when it is loud; voice design
     // (ref_rms < 0) skips peak / 0.5 and runs at native level.
     float volume_scale = 1.0f;
     if (ref_rms < 0.0f) {
@@ -1188,7 +1188,7 @@ int pipeline_tts_duration_sec_to_tokens(const PipelineCodec * pc, float duration
 }
 
 // Reference encoding result. has_ref=false signals the no-reference path
-// (voice design) ; the caller routes to the synth helpers with ref_codes
+// (voice design); the caller routes to the synth helpers with ref_codes
 // empty and ref_rms_for_postproc=-1.
 struct RefEncoded {
     bool                 has_ref;
@@ -1231,7 +1231,7 @@ static RefEncoded tts_encode_ref(PipelineTTS *       pt,
 
     // Mirror Python OmniVoice: compute ref_rms once on the loaded waveform.
     // Auto loudness normalisation when ref RMS is in (0, 0.1). Scales the
-    // buffer so the new RMS hits exactly 0.1 ; the ORIGINAL ref_rms is what
+    // buffer so the new RMS hits exactly 0.1; the ORIGINAL ref_rms is what
     // we plumb into the post-proc to rescale the generated output back to
     // the reference loudness.
     double sumsq = 0.0;
@@ -1351,7 +1351,7 @@ ov_status pipeline_tts_synthesize(PipelineTTS *         pt,
     mg_cfg.seed                 = params->mg_seed;
 
     // Cancel context threaded into the long-form helpers. NULL callback
-    // disables polling ; triggered starts at false and flips on the first
+    // disables polling; triggered starts at false and flips on the first
     // poll that returns true.
     tts_cancel cc = { params->cancel, params->cancel_user_data, false };
 

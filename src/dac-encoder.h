@@ -16,7 +16,7 @@
 #include "dac-decoder.h"
 
 // Encoder block: 3x ResUnit(in_ch) -> Snake(in_ch) -> strided Conv1d(in -> out)
-// The res_units keep in_ch ; the post-residual snake works on in_ch ; the
+// The res_units keep in_ch; the post-residual snake works on in_ch; the
 // strided conv at the end of the block is what brings the channel count up
 // from in_ch to out_ch alongside the temporal downsampling.
 struct DACEncBlock {

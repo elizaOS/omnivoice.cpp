@@ -131,7 +131,7 @@ static void sem_enc_free(SemanticEncoder * d) {
 }
 
 // One residual unit: ELU -> conv1 -> ELU -> conv2 + skip
-// Same-padding for both convs (pad = (k-1)*dil/2). conv1 k=3 dil=1 -> pad=1 ;
+// Same-padding for both convs (pad = (k-1)*dil/2). conv1 k=3 dil=1 -> pad=1;
 // conv2 k=1 -> pad=0. No bias on either conv (passed as NULL to dac_conv1d).
 static struct ggml_tensor * sem_res_unit(struct ggml_context *   ctx,
                                          const SemanticResUnit * ru,

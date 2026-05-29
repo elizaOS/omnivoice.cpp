@@ -24,6 +24,7 @@
 #include "ggml-backend.h"
 #include "ggml.h"
 #include "ov-error.h"
+#include "utf8.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -326,7 +327,7 @@ std::vector<float> pipeline_codec_decode(PipelineCodec * pc, const int32_t * cod
             const size_t       n = ggml_nelements(t);
             std::vector<float> tmp(n);
             ggml_backend_tensor_get(t, tmp.data(), 0, n * sizeof(float));
-            FILE * f = fopen(path, "wb");
+            FILE * f = utf8_fopen(path, "wb");
             fwrite(tmp.data(), sizeof(float), n, f);
             fclose(f);
             ov_log(OV_LOG_INFO, "[PipelineCodec] Dumped %s: %zu f32 values, ne=(%lld, %lld, %lld, %lld)", path, n,
@@ -542,7 +543,7 @@ std::vector<int32_t> pipeline_codec_encode(PipelineCodec * pc,
             const size_t       n = ggml_nelements(t);
             std::vector<float> tmp(n);
             ggml_backend_tensor_get(t, tmp.data(), 0, n * sizeof(float));
-            FILE * f = fopen(path, "wb");
+            FILE * f = utf8_fopen(path, "wb");
             fwrite(tmp.data(), sizeof(float), n, f);
             fclose(f);
             ov_log(OV_LOG_INFO, "[Encode] Dumped %s: %zu f32 values, ne=(%lld, %lld)", path, n, (long long) t->ne[0],

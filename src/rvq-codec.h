@@ -183,7 +183,7 @@ static struct ggml_tensor * rvq_decode_graph(struct ggml_context * ctx,
 // Build the encode graph. embeddings [hidden, T] f32 is the post-fc input.
 // Fills `out_idx_per_k[0..7]` with one i32 [T] tensor per codebook (the
 // argmax indices). Returns the last index tensor as a convenient pin point
-// for ggml_build_forward_expand ; the caller must expand each of the 8
+// for ggml_build_forward_expand; the caller must expand each of the 8
 // outputs and copy them back to host separately. We avoid packing them into
 // a single (T, 8) tensor because ggml_concat is F32-only on CUDA, and any
 // chain of ggml_cpy into a shared destination would not survive the gallocr

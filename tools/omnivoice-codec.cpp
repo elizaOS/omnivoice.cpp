@@ -12,6 +12,7 @@
 #include "audio-io.h"
 #include "backend.h"
 #include "pipeline-codec.h"
+#include "utf8.h"
 #include "version.h"
 
 #include <cstdint>
@@ -85,7 +86,7 @@ static std::vector<int32_t> unpack_codes(const std::vector<uint8_t> & in, size_t
 // Read a .rvq file and unpack it into K*T codes. T is inferred from the file
 // size: T = (filesize * 8) / (K * RVQ_CODE_BITS).
 static bool read_rvq(const char * path, int K, std::vector<int32_t> & codes, int * n_frames) {
-    FILE * f = fopen(path, "rb");
+    FILE * f = utf8_fopen(path, "rb");
     if (!f) {
         fprintf(stderr, "[RVQ] FATAL: cannot open %s\n", path);
         return false;
@@ -120,7 +121,7 @@ static bool read_rvq(const char * path, int K, std::vector<int32_t> & codes, int
 // Pack and write a .rvq file.
 static bool write_rvq(const char * path, const std::vector<int32_t> & codes) {
     std::vector<uint8_t> packed = pack_codes(codes);
-    FILE *               f      = fopen(path, "wb");
+    FILE *               f      = utf8_fopen(path, "wb");
     if (!f) {
         fprintf(stderr, "[RVQ] FATAL: cannot open %s for write\n", path);
         return false;
@@ -263,6 +264,7 @@ int main_impl(int argc, char ** argv) {
 }
 
 int main(int argc, char ** argv) {
+    utf8_init(&argc, &argv);
     // Top-level boundary: the codec load chain signals fatal errors via
     // exceptions instead of exit(1). Catching here turns std::terminate
     // into a clean error line.

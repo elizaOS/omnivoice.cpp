@@ -16,6 +16,7 @@
 #include "pipeline-tts.h"
 #include "text-chunker-stream.h"
 #include "text-chunker.h"
+#include "utf8.h"
 #include "version.h"
 #include "voice-design.h"
 
@@ -85,7 +86,7 @@ static std::string read_stdin_text() {
 
 // Read a small text file (transcript) into a string. Trims trailing newlines.
 static bool read_text_file(const char * path, std::string & out) {
-    FILE * f = fopen(path, "rb");
+    FILE * f = utf8_fopen(path, "rb");
     if (!f) {
         fprintf(stderr, "[OmniVoice-TTS] FATAL: cannot open %s\n", path);
         return false;
@@ -115,7 +116,7 @@ static bool read_embed_input_dump(const char *           path,
                                   int *                  S_out,
                                   std::vector<int32_t> & input_ids,
                                   std::vector<int32_t> & audio_mask) {
-    FILE * f = fopen(path, "rb");
+    FILE * f = utf8_fopen(path, "rb");
     if (!f) {
         fprintf(stderr, "[Dump] FATAL: cannot open %s\n", path);
         return false;
@@ -147,7 +148,7 @@ static bool read_embed_input_dump(const char *           path,
 
 // Write [i32 V, i32 K, i32 S, V*K*S f32 audio_logits] (--llm-test out).
 static bool write_logits_dump(const char * path, int V, int K, int n_frames, const float * data) {
-    FILE * f = fopen(path, "wb");
+    FILE * f = utf8_fopen(path, "wb");
     if (!f) {
         fprintf(stderr, "[Dump] FATAL: cannot open %s for write\n", path);
         return false;
@@ -174,7 +175,7 @@ static bool write_audio_tokens_dump(const char * path, int K, int T, const std::
         fprintf(stderr, "[Dump] FATAL: token vector size %zu does not match K*T=%d*%d\n", tokens.size(), K, T);
         return false;
     }
-    FILE * f = fopen(path, "wb");
+    FILE * f = utf8_fopen(path, "wb");
     if (!f) {
         fprintf(stderr, "[Dump] FATAL: cannot open %s for write\n", path);
         return false;
@@ -228,7 +229,7 @@ static int run_tts_via_ov(const char * model_path,
 
     int rc = 0;
 
-    // Optional reference WAV. The handle takes the raw mono 24 kHz buffer ;
+    // Optional reference WAV. The handle takes the raw mono 24 kHz buffer;
     // every preprocessing step (RMS, auto-gain, add_punctuation, silence
     // trim, hop alignment, codec encode) runs inside ov_synthesize.
     std::vector<float> ref_audio;
@@ -276,7 +277,7 @@ static int run_tts_via_ov(const char * model_path,
 
     if (stream_to_stdout) {
         // Streaming stdin -> streaming stdout. Bytes arrive as the upstream
-        // produces them ; the incremental text chunker drives synthesis as
+        // produces them; the incremental text chunker drives synthesis as
         // soon as a chunk of text is ready. Each chunk goes through a full
         // ov_synthesize call with on_chunk forwarding samples to the wav
         // stream sink. The text chunker is bit-perfect equivalent to the
@@ -285,7 +286,7 @@ static int run_tts_via_ov(const char * model_path,
         // chunk_len is computed from chunk_duration_sec assuming a typical
         // 1 frame per codepoint ratio (English speech). Languages with a
         // higher token-per-char ratio (CJK) produce shorter audio per
-        // chunk ; the upstream long-form path measures this ratio from the
+        // chunk; the upstream long-form path measures this ratio from the
         // full text but the streaming path cannot. The observed audio
         // chunks therefore stay bounded above by chunk_duration_sec but
         // may run shorter, which is the safe direction for prosody.
@@ -377,7 +378,7 @@ static int run_tts_via_ov(const char * model_path,
     // Defaults mirror OmniVoiceGenerationConfig (Python): num_step=32,
     // guidance_scale=2.0, t_shift=0.1, layer_penalty_factor=5.0,
     // position_temperature=5.0, class_temperature=0.0. ov_tts_default_params
-    // sets the lot ; the CLI seed lands on mg_seed below.
+    // sets the lot; the CLI seed lands on mg_seed below.
     ov_tts_params params;
     ov_tts_default_params(&params);
     params.text                = text.c_str();
@@ -626,6 +627,7 @@ static int main_impl(int argc, char ** argv) {
 }
 
 int main(int argc, char ** argv) {
+    utf8_init(&argc, &argv);
     // Top-level boundary: the lib now signals fatal load errors via
     // exceptions instead of exit(1). The TTS path goes through ov_init
     // which catches them internally, but the lower-level debug paths

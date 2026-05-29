@@ -1,7 +1,7 @@
 /* tests/abi-c.c: link-only ABI smoke test for omnivoice.h.
  *
  * Compiled in pure C99 with -Wall -Werror -pedantic. The purpose of this
- * test is NOT to run a full synthesis (no GGUF loaded, no model required) ;
+ * test is NOT to run a full synthesis (no GGUF loaded, no model required);
  * it is to guarantee at every build that :
  *
  *   1. omnivoice.h parses with a C compiler (no <cstdio>, no std::*, no
@@ -51,7 +51,7 @@ static void stub_log(enum ov_log_level level, const char * msg, void * user_data
 int main(void) {
     /* Static version string, always reachable. */
     const char * version = ov_version();
-    printf("omnivoice ABI probe : %s\n", version);
+    printf("[Probe] %s\n", version);
 
     /* Default-initialise the public structs from C. */
     struct ov_init_params iparams;
@@ -62,11 +62,11 @@ int main(void) {
 
     /* Sanity-check a few default values, including the new abi_version. */
     if (params.mg_num_step != 32 || params.chunk_duration_sec <= 0.0f) {
-        fprintf(stderr, "ABI probe : default values do not match\n");
+        fprintf(stderr, "[Probe] default values do not match\n");
         return 1;
     }
     if (iparams.abi_version != OV_ABI_VERSION || params.abi_version != OV_ABI_VERSION) {
-        fprintf(stderr, "ABI probe : abi_version not set by ov_*_default_params\n");
+        fprintf(stderr, "[Probe] abi_version not set by ov_*_default_params\n");
         return 1;
     }
 
@@ -89,7 +89,7 @@ int main(void) {
      * model, but the linker must resolve every name to satisfy the call. */
     struct ov_context * dummy = ov_init(NULL);
     if (dummy != NULL) {
-        fprintf(stderr, "ABI probe : ov_init(NULL) was supposed to return NULL\n");
+        fprintf(stderr, "[Probe] ov_init(NULL) was supposed to return NULL\n");
         ov_free(dummy);
         return 2;
     }
@@ -100,23 +100,23 @@ int main(void) {
      * check the first byte to confirm an error was actually recorded. */
     const char * err = ov_last_error();
     if (err == NULL || err[0] == '\0') {
-        fprintf(stderr, "ABI probe : ov_last_error() empty after a known failure\n");
+        fprintf(stderr, "[Probe] ov_last_error() empty after a known failure\n");
         return 5;
     }
 
     /* The same failure must have surfaced through the log callback at
      * ERROR level. */
     if (g_log_lines == 0) {
-        fprintf(stderr, "ABI probe : ov_log_set callback never invoked\n");
+        fprintf(stderr, "[Probe] ov_log_set callback never invoked\n");
         return 6;
     }
     if (g_last_log_level != OV_LOG_ERROR) {
-        fprintf(stderr, "ABI probe : last log level was %d, expected %d\n", (int) g_last_log_level,
+        fprintf(stderr, "[Probe] last log level was %d, expected %d\n", (int) g_last_log_level,
                 (int) OV_LOG_ERROR);
         return 7;
     }
-    printf("omnivoice ABI probe : ov_log_set routed %d line(s), last : '%s'\n", g_log_lines, g_last_log_msg);
-    printf("omnivoice ABI probe : ov_last_error reads '%s'\n", err);
+    printf("[Probe] ov_log_set routed %d line(s), last: '%s'\n", g_log_lines, g_last_log_msg);
+    printf("[Probe] ov_last_error reads '%s'\n", err);
 
     /* abi_version validation : a struct claiming a future ABI must be
      * rejected up front, before any allocation. */
@@ -126,21 +126,21 @@ int main(void) {
     future_iparams.abi_version = OV_ABI_VERSION + 1;
     struct ov_context * rejected = ov_init(&future_iparams);
     if (rejected != NULL) {
-        fprintf(stderr, "ABI probe : ov_init accepted a future abi_version\n");
+        fprintf(stderr, "[Probe] ov_init accepted a future abi_version\n");
         ov_free(rejected);
         return 8;
     }
 
     enum ov_status rc = ov_synthesize(NULL, &params, &audio);
     if (rc != OV_STATUS_INVALID_PARAMS) {
-        fprintf(stderr, "ABI probe : ov_synthesize(NULL) returned %d, expected %d\n", (int) rc,
+        fprintf(stderr, "[Probe] ov_synthesize(NULL) returned %d, expected %d\n", (int) rc,
                 (int) OV_STATUS_INVALID_PARAMS);
         return 3;
     }
 
     int frames = ov_duration_sec_to_tokens(NULL, 1.0f);
     if (frames < 1) {
-        fprintf(stderr, "ABI probe : ov_duration_sec_to_tokens returned %d, expected >= 1\n", frames);
+        fprintf(stderr, "[Probe] ov_duration_sec_to_tokens returned %d, expected >= 1\n", frames);
         return 4;
     }
 

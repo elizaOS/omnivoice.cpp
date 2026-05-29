@@ -81,7 +81,7 @@ struct DACDecoder {
 
 // Load a 1D-along-channel alpha tensor (stored shape (1, C, 1)) as f32 [C],
 // with an optional reciprocal transform to produce inv_b = 1 / (alpha + 1e-9).
-// The source can be F32 or BF16 ; we widen on the fly when needed.
+// The source can be F32 or BF16; we widen on the fly when needed.
 static void dac_load_alpha(struct ggml_tensor * dst, const GGUFModel & gf, const std::string & name, bool reciprocal) {
     struct ggml_tensor * mt = ggml_get_tensor(gf.meta, name.c_str());
     if (!mt) {
@@ -138,7 +138,7 @@ static void dac_load_passthrough(struct ggml_tensor * dst, const GGUFModel & gf,
 // Pre-permute the ConvTranspose1d weight from source layout (IC, OC, K) to
 // the [IC, K*OC] layout col2im_1d expects (k varies faster than oc inside
 // the K*OC axis). The destination is GGML_TYPE_F16 to align with every
-// other DAC conv weight ; widening goes through F32 transiently so any
+// other DAC conv weight; widening goes through F32 transiently so any
 // source dtype (F32, F16, BF16, Q8_0, Q4_K, ...) loads identically.
 //
 //   src flat[ic*OC*K + oc*K + k] = w[ic][oc][k]   source-side row-major

@@ -25,6 +25,7 @@
 
 #include "ggml.h"
 #include "gguf.h"
+#include "utf8.h"
 #include "version.h"
 
 // Quant variant: base type + optional bump rules for important tensors
@@ -101,7 +102,7 @@ static bool is_embed(const char * name) {
 // Sensitive tensors that MUST stay in full precision :
 //   quantizer.quantizers.*  RVQ codebooks, project_in / project_out
 //                           nearest-neighbor lookup is sensitive to per-row
-//                           quantization noise ; even BF16 destroys the
+//                           quantization noise; even BF16 destroys the
 //                           mantissa enough to mis-select codes and break
 //                           the voice cloning pipeline.
 //   fc.weight / fc2.weight  Linear projections wrapping the RVQ stack,
@@ -135,7 +136,7 @@ static bool should_quantize(const char * name, int n_dims, const char * arch) {
     }
     // RVQ codebooks and surrounding linear projections: nearest-neighbor
     // lookup is sensitive to per-row quantization noise. Q8_0 / K-quants
-    // break ref audio encoding and tank voice cloning ; BF16 already loses
+    // break ref audio encoding and tank voice cloning; BF16 already loses
     // enough mantissa to drift codes. Keep them at F32 in every variant.
     if (strstr(name, "quantizer.quantizers")) {
         return false;
@@ -207,6 +208,7 @@ static bool to_f32(const void * src, float * dst, int64_t n, enum ggml_type type
 }
 
 int main(int argc, char ** argv) {
+    utf8_init(&argc, &argv);
     if (argc != 4) {
         fprintf(stderr, "omnivoice.cpp %s\n\n", OMNIVOICE_VERSION);
         fprintf(stderr, "Usage: %s <input.gguf> <output.gguf> <type>\n", argv[0]);
@@ -231,12 +233,14 @@ int main(int argc, char ** argv) {
 
     // Mmap input file
 #ifdef _WIN32
-    HANDLE fh = CreateFileA(inp_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    std::wstring winp_path = utf8_to_wide(inp_path);
+    HANDLE       fh =
+        CreateFileW(winp_path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (fh == INVALID_HANDLE_VALUE) {
         fprintf(stderr, "[Quantize] Failed to open %s\n", inp_path);
         return 1;
     }
-    HANDLE mh = CreateFileMappingA(fh, NULL, PAGE_READONLY, 0, 0, NULL);
+    HANDLE mh = CreateFileMappingW(fh, NULL, PAGE_READONLY, 0, 0, NULL);
     if (!mh) {
         fprintf(stderr, "[Quantize] CreateFileMapping failed %s\n", inp_path);
         CloseHandle(fh);
@@ -365,7 +369,7 @@ int main(int argc, char ** argv) {
     }
 
     // Stream tensor data one at a time (low memory)
-    FILE * fout = fopen(out_path, "ab");
+    FILE * fout = utf8_fopen(out_path, "ab");
     if (!fout) {
         fprintf(stderr, "[Quantize] Failed to open %s for append\n", out_path);
         return 1;

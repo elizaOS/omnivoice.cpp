@@ -56,7 +56,7 @@ void ov_set_error_v(const char * fmt, va_list ap) {
     int needed = std::vsnprintf(nullptr, 0, fmt, ap2);
     va_end(ap2);
     if (needed < 0) {
-        g_last_error = "ov_set_error : vsnprintf failed";
+        g_last_error = "ov_set_error: vsnprintf failed";
         return;
     }
     g_last_error.resize(static_cast<size_t>(needed));
@@ -207,12 +207,12 @@ void ov_tts_default_params(struct ov_tts_params * p) {
 
 struct ov_context * ov_init(const struct ov_init_params * params) {
     if (!params || !params->model_path) {
-        ov_set_error("ov_init : params or model_path is NULL");
+        ov_set_error("ov_init: params or model_path is NULL");
         ov_log(OV_LOG_ERROR, "[OmniVoice] ov_init requires a model_path");
         return nullptr;
     }
     if (params->abi_version > OV_ABI_VERSION) {
-        ov_set_error("ov_init : params->abi_version %d > OV_ABI_VERSION %d (binding compiled against a newer header)",
+        ov_set_error("ov_init: params->abi_version %d > OV_ABI_VERSION %d (binding compiled against a newer header)",
                      params->abi_version, OV_ABI_VERSION);
         ov_log(OV_LOG_ERROR, "[OmniVoice] ov_init params struct is from a newer ABI (%d > %d)", params->abi_version,
                OV_ABI_VERSION);
@@ -230,17 +230,17 @@ struct ov_context * ov_init(const struct ov_init_params * params) {
 
     // The load chain runs inside a try block. Any failure deep in the GGUF
     // reader, the audio tokenizer load or the LM weight load throws via
-    // ov_throw ; the catch funnels every variant into one cleanup via
+    // ov_throw; the catch funnels every variant into one cleanup via
     // ov_free, which is idempotent on partial state (NULL-safe sched, NULL
     // GGUF handles, refcount-correct backend release).
     try {
         ov->bp = backend_init("LM");
         if (!ov->bp.backend) {
-            ov_throw("ov_init : backend_init failed (no GGML backend available)");
+            ov_throw("ov_init: backend_init failed (no GGML backend available)");
         }
 
         if (!pipeline_tts_load(&ov->pt, params->model_path, ov->bp, params->use_fa, params->clamp_fp16)) {
-            ov_throw("ov_init : pipeline_tts_load failed for '%s'", params->model_path);
+            ov_throw("ov_init: pipeline_tts_load failed for '%s'", params->model_path);
         }
 
         // BPE tokenizer payload lives inside the same LM GGUF as the weights.
@@ -248,12 +248,12 @@ struct ov_context * ov_init(const struct ov_init_params * params) {
         // shot.
         if (!load_bpe_from_gguf(&ov->tok, params->model_path) ||
             !bpe_load_omnivoice_specials(&ov->tok, params->model_path)) {
-            ov_throw("ov_init : BPE / OmniVoice specials load failed for '%s'", params->model_path);
+            ov_throw("ov_init: BPE / OmniVoice specials load failed for '%s'", params->model_path);
         }
 
         if (params->codec_path) {
             if (!pipeline_codec_load(&ov->pc, params->codec_path, ov->bp)) {
-                ov_throw("ov_init : pipeline_codec_load failed for '%s'", params->codec_path);
+                ov_throw("ov_init: pipeline_codec_load failed for '%s'", params->codec_path);
             }
             ov->codec_loaded = true;
         }
@@ -281,7 +281,7 @@ void ov_free(struct ov_context * ov) {
 
 enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params * params, struct ov_audio * out) {
     if (!ov || !params) {
-        ov_set_error("ov_synthesize : ov / params is NULL");
+        ov_set_error("ov_synthesize: ov / params is NULL");
         if (out) {
             ov_audio_free(out);
         }
@@ -291,12 +291,12 @@ enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params 
     // leaves out unused, so out=NULL is valid there. Buffered mode requires
     // out to receive the synthesised waveform.
     if (!params->on_chunk && !out) {
-        ov_set_error("ov_synthesize : out is NULL in buffered mode");
+        ov_set_error("ov_synthesize: out is NULL in buffered mode");
         return OV_STATUS_INVALID_PARAMS;
     }
     if (params->abi_version > OV_ABI_VERSION) {
         ov_set_error(
-            "ov_synthesize : params->abi_version %d > OV_ABI_VERSION %d (binding compiled against a newer header)",
+            "ov_synthesize: params->abi_version %d > OV_ABI_VERSION %d (binding compiled against a newer header)",
             params->abi_version, OV_ABI_VERSION);
         if (out) {
             ov_audio_free(out);
@@ -304,7 +304,7 @@ enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params 
         return OV_STATUS_INVALID_PARAMS;
     }
     if (!ov->codec_loaded) {
-        ov_set_error("ov_synthesize : codec not loaded (pass codec_path to ov_init)");
+        ov_set_error("ov_synthesize: codec not loaded (pass codec_path to ov_init)");
         if (out) {
             ov_audio_free(out);
         }
@@ -330,7 +330,7 @@ enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params 
 
 int ov_duration_sec_to_tokens(const struct ov_context * ov, float duration_sec) {
     if (!ov || !ov->codec_loaded) {
-        ov_set_error("ov_duration_sec_to_tokens : codec not loaded");
+        ov_set_error("ov_duration_sec_to_tokens: codec not loaded");
         ov_log(OV_LOG_ERROR, "[OmniVoice] ov_duration_sec_to_tokens requires a codec-loaded handle");
         return 1;
     }

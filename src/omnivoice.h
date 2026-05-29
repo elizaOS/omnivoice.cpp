@@ -52,7 +52,7 @@ extern "C" {
 // only what its abi_version permits.
 //
 // There is no separate semver triple. The runtime build identity is the
-// git short hash + commit date string returned by ov_version() ; for
+// git short hash + commit date string returned by ov_version(); for
 // binding compat checks, OV_ABI_VERSION is the only number that matters.
 #define OV_ABI_VERSION 2
 
@@ -75,7 +75,7 @@ enum ov_status {
 // Returns the last error message produced on the calling thread by any
 // ov_* entry, as a NUL-terminated UTF-8 string. errno-style semantics: the
 // pointer is only meaningful right after a failure (ov_init returning NULL,
-// or any ov_* entry returning a negative ov_status) ; calling it after a
+// or any ov_* entry returning a negative ov_status); calling it after a
 // successful entry yields the previous message or an empty string. Storage
 // is thread-local so two threads running ov_synthesize concurrently never
 // race on each other's diagnostics. The pointer stays valid until the next
@@ -103,7 +103,7 @@ struct ov_context;
 // Initialisation parameters. model_path is required (the LM GGUF). When
 // codec_path is NULL the codec module is skipped and ov_synthesize fails
 // immediately with OV_STATUS_INVALID_PARAMS. use_fa enables flash
-// attention when a GPU backend is present ; clamp_fp16 guards FP16
+// attention when a GPU backend is present; clamp_fp16 guards FP16
 // matmul accumulation on sub-Ampere CUDA. abi_version stays first so a
 // future struct growth keeps reading the version field at offset 0.
 struct ov_init_params {
@@ -137,7 +137,7 @@ typedef bool (*ov_cancel_cb)(void * user_data);
 // chunk through this callback rather than accumulated into the `out` buffer
 // of ov_synthesize. Returning false aborts the synthesis with
 // OV_STATUS_CANCELLED, identical to the ov_cancel_cb behaviour. The samples
-// pointer is mono float PCM at the codec sample rate ; valid only for the
+// pointer is mono float PCM at the codec sample rate; valid only for the
 // duration of the call. user_data is forwarded verbatim from on_chunk_user_data.
 //
 // Bit perfect against the buffered path for voice cloning. For voice design
@@ -149,9 +149,9 @@ typedef bool (*ov_audio_chunk_cb)(const float * samples, int n_samples, void * u
 
 // Log severity. Numerically ordered so a callback can filter with a
 // simple `if (level < threshold) return;`. ERROR is reserved for failure
-// reports that the lib also surfaces via ov_status / ov_last_error ;
-// WARN for recoverable surprises ; INFO for the normal load and
-// synthesis cadence ; DEBUG for tensor-level cossim diagnostics.
+// reports that the lib also surfaces via ov_status / ov_last_error;
+// WARN for recoverable surprises; INFO for the normal load and
+// synthesis cadence; DEBUG for tensor-level cossim diagnostics.
 enum ov_log_level {
     OV_LOG_DEBUG = 0,
     OV_LOG_INFO  = 1,
@@ -166,12 +166,12 @@ enum ov_log_level {
 typedef void (*ov_log_cb)(enum ov_log_level level, const char * msg, void * user_data);
 
 // Install a global log callback. Passing cb == NULL restores the default
-// behaviour (write to stderr). Safe to call at any point ; takes effect
+// behaviour (write to stderr). Safe to call at any point; takes effect
 // immediately on subsequent log emissions across every thread. Storage
 // is process-wide, not per-handle, matching whisper_log_set / llama_log_set.
 OV_API void ov_log_set(ov_log_cb cb, void * user_data);
 
-// Synthesis parameters. Strings are NULL-terminated UTF-8 ; NULL maps to
+// Synthesis parameters. Strings are NULL-terminated UTF-8; NULL maps to
 // empty. Reference inputs are mutually exclusive: either pre-encoded
 // tokens [K, ref_T] OR raw 24 kHz mono samples. Passing both fails with
 // OV_STATUS_INVALID_PARAMS. The MaskGIT sampler config is flattened
@@ -247,7 +247,7 @@ OV_API void ov_tts_default_params(struct ov_tts_params * p);
 // Run the full TTS synthesis. Resolves the instruct against the bundled
 // VoiceDesign vocabulary, picks between single-shot, chunked auto-voice
 // and voice-cloning paths from the params struct, and fills `out` with
-// mono float PCM at 24 kHz. Returns OV_STATUS_OK on success ; on any
+// mono float PCM at 24 kHz. Returns OV_STATUS_OK on success; on any
 // failure returns a negative ov_status describing the cause and leaves
 // `out` empty. Requires a codec-loaded handle.
 OV_API enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params * params, struct ov_audio * out);
